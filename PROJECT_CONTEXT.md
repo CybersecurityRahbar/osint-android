@@ -872,3 +872,17 @@
 - معرّف حزمة Preview المقصود `com.cyberphantom.osintworkbench.preview051`، والإصدار `versionCode=8` / `versionName=0.6.0`. لم يتم تغيير هذه القيم أو استبدال مفتاح التوقيع.
 - تم إنشاء هذا التوثيق كتغيير على `main` لتشغيل workflow تلقائياً عبر حدث push؛ لأن اتصال GitHub المتاح لا يقدم إجراءً مباشراً لـ `workflow_dispatch`. هذا التشغيل هو اختبار إعداد الأسرار الذي أكده المستخدم، ويجب تسجيل نتيجته وخطوات التوقيع ورفع الـ artifact بعد اكتماله.
 - لا تُسجل قيم الأسرار نفسها في هذا الملف أو في أي ملف عام.
+
+
+## 2026-11-22 — نجاح بناء APK الموقّع v0.6.0
+- بعد تأكيد المستخدم إضافة السرّين، تم تشغيل GitHub Actions عبر push توثيقي إلى `main`.
+- تشغيل البناء: Android CI Run #12، ID `44950488102`، commit `c68d203c337b91fed33ae8690f9d3d9d1835342b`.
+- النتيجة النهائية: `success`. اكتملت جميع خطوات إعداد JDK وGradle وAndroid SDK واختبارات الوحدة.
+- الأهم: نجحت خطوة `Prepare stable preview signing`، ثم نجح `Build debug APK`، ونجحت `Upload stable-signed preview APK`. تم تخطي خطوة شرح حالة غياب الأسرار لأنها غير مطلوبة بعد نجاح التوقيع والرفع.
+- artifact المرفوع: `osint-workbench-v0.6.0-preview-apk`، ID `14725750388`، حجمه 19,622,040 بايت (ZIP)، وبصمة SHA-256 للـ ZIP: `ece3f58076e961a0c6d398e251b096877b08b3dd70e39c443a11bbef08c3a1f6`. تاريخ انتهاء الاحتفاظ المعروض من GitHub: 2026-12-05T21:15:09Z.
+- تم تنزيل الـ artifact وفحص سلامة ZIP: سليم ولا يحتوي أخطاء، ويضم `app-debug.apk` بحجم 20,268,693 بايت.
+- بصمة SHA-256 لملف APK المستخرج: `b2cb958283df93b617647f7c74b82dadfc92c7ec8adbb367df7c4137b4da61b9`.
+- مسار نسخة APK المستخرجة في بيئة العمل: `/mnt/data/osint-android-v0.6.0/app-debug.apk`.
+- هوية القناة لم تتغير في هذا البناء: `com.cyberphantom.osintworkbench.preview051`، `versionCode=8`، `versionName=0.6.0`، alias `osint-preview`.
+- يثبت نجاح CI أن الاختبارات وإعداد المفتاح والبناء والرفع اكتملت. لم يتم تثبيت التطبيق على هاتف فعلي في هذه الجلسة؛ لذلك يظل اختبار الترقية الفعلي على الهاتف هو التحقق النهائي من استمرار بيانات التطبيق والجلسة.
+- رابط تشغيل البناء: https://github.com/CybersecurityRahbar/osint-android/actions/runs/44950488102
