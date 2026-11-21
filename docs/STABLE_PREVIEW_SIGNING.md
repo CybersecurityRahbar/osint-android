@@ -1,31 +1,44 @@
-# Stable preview signing
+# Stable preview signing — osint-android
 
-The preview release channel is designed to update in place so Android keeps the app's private data, including the SQLite database and Telegram WebView session.
+The v0.6.0 preview must use the same private signing key as the earlier `osint-web` preview channel. This preserves Android's ability to update the same installed package in place.
 
-## One-time secret setup
+## Verified signing identity
 
-This repository is public. **Never commit the keystore, its Base64 text, or its password to the repository.** The keystore was supplied separately to the project owner in the current ChatGPT conversation.
+The existing signing material was checked from the previously saved owner-held files. The PKCS#12 keystore opens successfully and contains a private-key entry with:
 
-In the repository on GitHub:
+- Alias: `osint-preview`
+- Store type: `PKCS12`
+- Certificate SHA-256: `A2:0C:31:09:17:45:EA:92:F8:BF:A3:57:07:FA:13:A6:5D:5F:AB:6D:7C:4A:C8:3D:A7:F6:8C:DE:A5:3B:4E:78`
 
-1. Open **Settings → Secrets and variables → Actions**.
-2. Select **New repository secret** and create:
-   - `PREVIEW_KEYSTORE_BASE64`: paste the complete contents of the separately supplied `OSINT_PREVIEW_KEYSTORE_BASE64.txt` file. Paste the Base64 text only.
-   - `PREVIEW_KEYSTORE_PASSWORD`: paste the exact password from the separately supplied `OSINT_PREVIEW_KEYSTORE_PASSWORD.txt` file, with no extra spaces or newline.
-3. Keep these two secrets unchanged for all future preview releases. The alias is fixed as `osint-preview`; the key password is the same as the keystore password.
-4. Open **Actions → Android CI → Run workflow → main**. After tests and packaging pass, download the artifact named `osint-workbench-v0.5.2-preview-apk` and extract `app-debug.apk`.
+This fingerprint is a public certificate identifier, not the private key. Keep the keystore and password private. Never put either value, the Base64 keystore text, or the PKCS#12 file in this public repository.
 
-If either secret is missing or incorrect, CI may run tests/build checks but deliberately does not upload a downloadable APK. This prevents a temporary debug-signed APK from being mistaken for an updateable release.
+## Configure this repository's Actions secrets
 
-## Important one-time migration from preview050
+Actions secrets created at repository scope in `osint-web` do not automatically appear in `osint-android`. Add the same two values to this repository:
 
-The earlier `com.cyberphantom.osintworkbench.preview050` APK was signed with a temporary GitHub-hosted debug key. Its private signing key was not retained, so Android cannot accept a replacement for that same package signed with a different key. The new stable channel therefore uses `com.cyberphantom.osintworkbench.preview051` and installs alongside the old app instead of removing it.
+1. Open **Settings → Secrets and variables → Actions → Secrets → New repository secret**.
+2. Create `PREVIEW_KEYSTORE_BASE64` using the complete Base64 text from the saved `OSINT_PREVIEW_KEYSTORE_BASE64.txt` file.
+3. Create `PREVIEW_KEYSTORE_PASSWORD` using the exact contents of the saved `OSINT_PREVIEW_KEYSTORE_PASSWORD.txt` file.
+4. Do not change the alias; the workflow and Gradle configuration use `osint-preview`.
 
-Keep the old app installed until the new channel is checked. Its existing session and data remain in the old installation; Android keeps the two package sandboxes separate, so the new channel needs its own Telegram Web login once. Export/import the app's JSON database backup if you also need to transfer OSINT workspace data. After this transition, later previews should update `preview051` in place as long as its application ID and the same stable signing key are preserved.
+Repository settings: https://github.com/CybersecurityRahbar/osint-android/settings/secrets/actions
 
-## Rules for every future release
+## Build and download
 
-- Keep the preview `applicationIdSuffix` as `.preview051`.
-- Keep the two signing secrets unchanged and private.
-- Increase `versionCode` and update `versionName` when publishing a newer build.
-- Do not download/install an artifact from an Actions run that did not upload `osint-workbench-v0.5.2-preview-apk`.
+After both secrets are configured, open **Actions → Android CI → Run workflow**, select `main`, and run it. Download the artifact named:
+
+`osint-workbench-v0.6.0-preview-apk`
+
+The downloaded artifact is a ZIP; extract and install `app-debug.apk`, not the ZIP.
+
+The current preview package ID is:
+
+`com.cyberphantom.osintworkbench.preview051`
+
+Keep this application ID, the `osint-preview` alias, the same keystore, and the same passwords for every future update. Increase `versionCode` for each build. The workflow deliberately does not upload an installable APK when signing secrets are absent or invalid; a successful compile-only build is not proof that the APK can update the installed app.
+
+## Important installation rule
+
+Android checks the signing certificate when updating an existing app. A new APK with a different certificate cannot update the same package as a normal in-place update. Keep the private signing key backed up securely and never regenerate it for this application channel.
+
+The older `.preview050` package was a separate transition build. The stable update channel is `.preview051`; a build from this repository will update an already installed `.preview051` app only when that installed app was signed with this same certificate.
