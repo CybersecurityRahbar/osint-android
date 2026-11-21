@@ -271,11 +271,13 @@ object TelegramWeb {
     ): TelegramSnapshot? {
         val deadline = SystemClock.elapsedRealtime() + timeoutMillis
         while (SystemClock.elapsedRealtime() < deadline) {
-            val snapshot = runCatching { snapshot(view) }.getOrElse {
+            val current = try {
+                snapshot(view)
+            } catch (error: Exception) {
                 delay(600L)
-                return@getOrElse null
+                null
             }
-            if (predicate(snapshot)) return snapshot
+            if (current != null && predicate(current)) return current
             delay(650L)
         }
         return null

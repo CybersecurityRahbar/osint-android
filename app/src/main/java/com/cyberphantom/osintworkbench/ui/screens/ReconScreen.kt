@@ -200,7 +200,7 @@ fun ReconScreen(store: LocalStore, initialTarget: String, onSaved: () -> Unit) {
             ReportActions(result)
 
             if (result.records.isNotEmpty()) {
-                val categories = listOf("ALL") + result.records.map(::reconCategory).distinct().sorted()
+                val categories = listOf("ALL") + result.records.map { reconCategory(it.kind) }.distinct().sorted()
                 SectionBar("01", "النتائج", "${result.records.size} سجل")
                 Row(
                     modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
