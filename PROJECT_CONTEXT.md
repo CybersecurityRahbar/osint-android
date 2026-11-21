@@ -864,3 +864,11 @@
 - آخر تشغيل سابق (run 10، ID `44949610397`) كان نجاحاً على مستوى job، لكنه تخطى إعداد المفتاح ورفع APK؛ لذلك لا يُعدّ APK قابلاً للتحديث.
 - يبدأ تشغيل جديد عبر هذا التغيير التوثيقي على `main` حتى يُنفَّذ Android CI بعد تأكيد المستخدم إضافة الأسرار. سيتم تسجيل نتيجة خطوات الاختبارات، والتحقق من keystore، والبناء، ورفع artifact بحسب نتيجة التشغيل الفعلية.
 - شرط التسليم: يجب أن تنجح `Prepare stable preview signing` و`Build debug APK` و`Upload stable-signed preview APK`، وأن يظهر artifact باسم `osint-workbench-v0.6.0-preview-apk`. نجاح Gradle وحده لا يكفي.
+
+
+## 2026-11-22 — تأكيد إضافة أسرار التوقيع وتشغيل بناء جديد
+- أكد المستخدم أنه أضاف السرّين `PREVIEW_KEYSTORE_BASE64` و`PREVIEW_KEYSTORE_PASSWORD` إلى إعدادات GitHub Actions في مستودع `osint-android`.
+- تمت مراجعة إعدادات `app/build.gradle.kts` و`.github/workflows/android.yml` قبل البناء: يقرأ Gradle ملف PKCS#12 المؤقت من `PREVIEW_KEYSTORE_PATH` ويستخدم alias `osint-preview`، بينما يفك workflow قيمة Base64 ويختبر keystore وكلمة المرور والـ alias باستخدام `keytool` قبل رفع APK.
+- معرّف حزمة Preview المقصود `com.cyberphantom.osintworkbench.preview051`، والإصدار `versionCode=8` / `versionName=0.6.0`. لم يتم تغيير هذه القيم أو استبدال مفتاح التوقيع.
+- تم إنشاء هذا التوثيق كتغيير على `main` لتشغيل workflow تلقائياً عبر حدث push؛ لأن اتصال GitHub المتاح لا يقدم إجراءً مباشراً لـ `workflow_dispatch`. هذا التشغيل هو اختبار إعداد الأسرار الذي أكده المستخدم، ويجب تسجيل نتيجته وخطوات التوقيع ورفع الـ artifact بعد اكتماله.
+- لا تُسجل قيم الأسرار نفسها في هذا الملف أو في أي ملف عام.
