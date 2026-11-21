@@ -816,4 +816,8 @@
 - أُضيفت `DorkCatalogueTest` و`EmailPostureEngineTest` و`UsernameEnumerationEngineTest` و`IntelFusionTest` إلى اختبارات الوحدة.
 
 ### حالة التحقق
-- لم يُبنَ المشروع محلياً التزاماً بطلب المستخدم (البناء داخل GitHub فقط). التحقق النهائي يعتمد على تشغيل Android CI بعد الـ push، ويجب تسجيل نتيجة التشغيل ورقم الـ artifact هنا قبل وصف النسخة بأنها مبنية. أتمتة Telegram تحتاج تجربة ميدانية على الهاتف بعد تثبيت التحديث فوق النسخة الحالية.
+- لم يُبنَ المشروع محلياً التزاماً بطلب المستخدم (البناء داخل GitHub فقط).
+- التشغيل الأول (run 3، ID `44947129196`، commit `cf8ef0e`) فشل في `compileDebugKotlin` بخطأين: استدلال نوع في `result.records.map(::reconCategory)` داخل `ReconScreen.kt`، ونوع nullable في حلقة `waitFor` داخل `TelegramWeb.kt`. أُصلح الاثنان في commit `fb0685b`.
+- التشغيل التالي (run 4، ID `44947523596`، commit `fb0685b`) انتهى `success`: نجحت خطوة `Run unit tests` (بما فيها الاختبارات الأربعة الجديدة) ونجحت خطوة `Build debug APK`. خطوات التوقيع الثابت والرفع تخطّيت لأن السرّين `PREVIEW_KEYSTORE_BASE64` و`PREVIEW_KEYSTORE_PASSWORD` غير مضبوطين في هذا المستودع، لذلك لا يوجد artifact قابل للتنزيل بعد.
+- المتطلب المتبقي للتثبيت فوق النسخة الحالية: إضافة السرّين في https://github.com/CybersecurityRahbar/osint-android/settings/secrets/actions ثم إعادة تشغيل workflow `Android CI` على `main`؛ سيُرفع artifact `osint-workbench-v0.6.0-preview-apk` عندها فقط.
+- أتمتة Telegram تحتاج تجربة ميدانية على الهاتف بعد تثبيت التحديث فوق النسخة الحالية؛ نجاح CI يثبت الترجمة والاختبارات لا تفاعل WebView الحقيقي.
