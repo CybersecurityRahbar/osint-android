@@ -854,3 +854,13 @@
   https://github.com/CybersecurityRahbar/osint-android/settings/secrets/actions
 - ثم أعد تشغيل `Actions → Android CI → Run workflow` على `main`. لا تعتمد إصداراً للتثبيت إلا إذا نجحت خطوة `Prepare stable preview signing` وظهرت خطوة `Upload stable-signed preview APK` بنتيجة `success` مع artifact `osint-workbench-v0.6.0-preview-apk`.
 - عند ثبات معرّف التطبيق والشهادة نفسها، يمكن تثبيت البناء الجديد كتحديث فوق نسخة `.preview051` المتوافقة دون حذف بيانات التطبيق. إذا كانت النسخة المثبتة مختلفة في application ID، فلن يكون ذلك تحديثاً فوق الحزمة نفسها.
+
+
+## 2026-11-22 — بدء بناء التطبيق بعد تأكيد إضافة أسرار التوقيع
+
+- أكد المستخدم أنه أضاف أسرار GitHub Actions في المستودع `CybersecurityRahbar/osint-android` وطلب مراجعة المستودع وتشغيل بناء التطبيق.
+- أُعيدت مراجعة `app/build.gradle.kts` و`.github/workflows/android.yml` وREADME وملف تعليمات التوقيع قبل البناء.
+- إعدادات المشروع الحالية: `versionCode=8` و`versionName=0.6.0` وapplication ID لقناة التحديث `com.cyberphantom.osintworkbench.preview051` وalias `osint-preview`.
+- آخر تشغيل سابق (run 10، ID `44949610397`) كان نجاحاً على مستوى job، لكنه تخطى إعداد المفتاح ورفع APK؛ لذلك لا يُعدّ APK قابلاً للتحديث.
+- يبدأ تشغيل جديد عبر هذا التغيير التوثيقي على `main` حتى يُنفَّذ Android CI بعد تأكيد المستخدم إضافة الأسرار. سيتم تسجيل نتيجة خطوات الاختبارات، والتحقق من keystore، والبناء، ورفع artifact بحسب نتيجة التشغيل الفعلية.
+- شرط التسليم: يجب أن تنجح `Prepare stable preview signing` و`Build debug APK` و`Upload stable-signed preview APK`، وأن يظهر artifact باسم `osint-workbench-v0.6.0-preview-apk`. نجاح Gradle وحده لا يكفي.
