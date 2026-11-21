@@ -13,3 +13,11 @@ local.properties
 *.aab
 keystore.properties
 secrets.properties
+
+# Private Android signing material — never commit these files
+*.jks
+*.keystore
+*.p12
+*.pfx
+*KEYSTORE_BASE64.txt
+*KEYSTORE_PASSWORD.txt
