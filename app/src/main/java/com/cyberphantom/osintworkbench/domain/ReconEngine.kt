@@ -161,6 +161,18 @@ class ReconEngine {
                         runCatching { inspectPublicDiscoveryFiles(domain) }
                             .onFailure { warnings += "ملفات الاكتشاف العامة: ${it.message ?: "تعذر فحص robots/sitemap/security.txt"}" }
                             .getOrDefault(emptyList())
+                    },
+                    async {
+                        runCatching { EmailPostureEngine().inspect(domain) }
+                            .onSuccess { warnings += it.warnings }
+                            .map { it.records }
+                            .onFailure { warnings += "سياسات البريد: ${it.message ?: "تعذر فحص SPF/DMARC/DKIM"}" }
+                            .getOrDefault(emptyList())
+                    },
+                    async {
+                        runCatching { ArchiveOrgEngine().search(domain, 12) }
+                            .onFailure { warnings += "Archive.org: ${it.message ?: "تعذر البحث في كتالوغ الأرشيف"}" }
+                            .getOrDefault(emptyList())
                     }
                 ).awaitAll().flatten()
             }

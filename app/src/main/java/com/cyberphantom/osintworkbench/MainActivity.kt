@@ -4,7 +4,7 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import com.cyberphantom.osintworkbench.ui.WorkbenchApp
-import com.cyberphantom.osintworkbench.ui.WorkbenchTheme
+import com.cyberphantom.osintworkbench.ui.design.WorkbenchTheme
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {

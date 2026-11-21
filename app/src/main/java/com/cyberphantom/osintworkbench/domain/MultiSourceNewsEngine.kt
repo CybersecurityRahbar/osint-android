@@ -38,7 +38,13 @@ class MultiSourceNewsEngine {
         Publisher("France 24", "france24.com", "en-US", "FR", "FR:en"),
         Publisher("The Guardian", "theguardian.com", "en-US", "GB", "GB:en"),
         Publisher("CNN", "cnn.com", "en-US", "US", "US:en"),
-        Publisher("العربية", "alarabiya.net", "ar", "SA", "SA:ar")
+        Publisher("العربية", "alarabiya.net", "ar", "SA", "SA:ar"),
+        Publisher("سكاي نيوز عربية", "skynewsarabia.com", "ar", "AE", "AE:ar"),
+        Publisher("الحرة", "alhurra.com", "ar", "US", "US:ar"),
+        Publisher("الشرق الأوسط", "aawsat.com", "ar", "SA", "SA:ar"),
+        Publisher("الميادين", "almayadeen.net", "ar", "LB", "LB:ar"),
+        Publisher("The New York Times", "nytimes.com", "en-US", "US", "US:en"),
+        Publisher("NPR", "npr.org", "en-US", "US", "US:en")
     )
 
     suspend fun search(query: String, maxRecords: Int = 40, includeImages: Boolean = true): NewsSearchResult = withContext(Dispatchers.IO) {
@@ -66,8 +72,13 @@ class MultiSourceNewsEngine {
             tasks.awaitAll()
         }
 
-        if (outcomes.none { it.articles.isNotEmpty() }) {
-            val fallbacks = listOf(publishers[0], publishers[2], publishers[4], publishers[7])
+        // A partial result set (not only a fully empty one) still warrants the publisher pass:
+        // aggregated feeds can silently drop an outlet while other feeds return unrelated hits.
+        if (outcomes.sumOf { it.articles.size } < maxOf(4, limit / 3)) {
+            val fallbackNames = setOf(
+                "Reuters", "BBC News", "Al Jazeera", "الجزيرة", "The Guardian", "الشرق الأوسط"
+            )
+            val fallbacks = publishers.filter { it.name in fallbackNames }.take(5)
             val extra = coroutineScope {
                 val semaphore = Semaphore(3)
                 fallbacks.map { publisher ->

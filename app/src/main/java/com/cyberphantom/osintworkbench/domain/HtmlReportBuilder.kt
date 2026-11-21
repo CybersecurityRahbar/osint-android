@@ -49,7 +49,7 @@ object HtmlReportBuilder {
                 <li>درجة الثقة رقم إرشادي مبني على نوع المصدر، وليست احتمالاً إحصائياً معايراً.</li>
                 <li>ظهور اسم نطاق في شهادة أو أرشيف لا يثبت أن الخدمة نشطة حالياً أو أن جهة معينة ما زالت تتحكم به.</li>
                 <li>غياب ترويسة أمان من استجابة واحدة ليس وحده إثباتاً لوجود ثغرة.</li>
-                <li>الفحص سلبي وخفيف؛ لا ينفذ فحص منافذ مثل Nmap ولا يغطي منظومة مصادر SpiderFoot.</li>
+                <li>${if (report.records.any { it.kind == "PORT_SCAN_SUMMARY" }) "تضمنت هذه العملية فحوص اتصال محدودة (منافذ شائعة ومؤشرات مسارات) على أصول مصرح بها؛ وهي ليست ماسحاً شاملاً ولا تثبت سلامة النظام عند عدم العثور على شيء." else "هذه العملية جمع سلبي فقط؛ لم تُنفذ فحوص منافذ أو مسارات."}</li>
               </ul>
             </section>
             <footer>أُنشئ محلياً بواسطة OSINT Workbench · تقرير مستقل للعملية المحددة.</footer>
@@ -151,6 +151,37 @@ ${body()}
         "MATCHED_NEWS" -> "مقالة مطابقة لعبارة البحث"
         "PUBLIC_PROFILE_RESULT_FOR" -> "نتيجة حساب عام لعبارة البحث"
         "OBSERVED_FOR" -> "سجل مرصود للنطاق"
+        "IP_GEOLOCATION" -> "موقع تقريبي لعنوان IP"
+        "IP_GEOLOCATION_UNAVAILABLE" -> "تعذر تحديد موقع IP"
+        "WAYBACK_IMAGE" -> "صورة مؤرشفة"
+        "WAYBACK_STATUS" -> "حالة استعلام الأرشيف"
+        "PUBLIC_WEB_RESULT" -> "نتيجة فهرس ويب عام"
+        "ROBOTS_TXT" -> "ملف robots.txt"
+        "ROBOTS_DISALLOW" -> "مسار في robots.txt"
+        "SITEMAP_SUMMARY" -> "ملخص sitemap"
+        "SITEMAP_URL" -> "رابط من sitemap"
+        "SECURITY_TXT_METADATA" -> "بيانات security.txt"
+        "WEB_IMAGE" -> "صورة في الصفحة"
+        "WEB_PREVIEW_IMAGE" -> "صورة معاينة"
+        "OPEN_TCP_PORT" -> "منفذ TCP مفتوح"
+        "PORT_SCAN_SUMMARY" -> "ملخص فحص المنافذ"
+        "EXPOSURE_CHECK_SUMMARY" -> "ملخص فحص المسارات"
+        "POTENTIAL_SENSITIVE_EXPOSURE" -> "مؤشر تعرض محتمل"
+        "SUBDOMAIN_DNS_STATUS" -> "حالة DNS لنطاق فرعي"
+        "SUBDOMAIN_ADDRESS" -> "عنوان نطاق فرعي"
+        "EMAIL_SPF" -> "سياسة SPF"
+        "EMAIL_SPF_RISK" -> "ملاحظة على SPF"
+        "EMAIL_SPF_PERMISSIVE" -> "SPF متساهل"
+        "EMAIL_SPF_ABSENT" -> "SPF غير معلن"
+        "EMAIL_DMARC" -> "سياسة DMARC"
+        "EMAIL_DMARC_MONITOR_ONLY" -> "DMARC مراقبة فقط"
+        "EMAIL_DMARC_ABSENT" -> "DMARC غير معلن"
+        "EMAIL_DKIM_SELECTOR" -> "محدد DKIM"
+        "EMAIL_DKIM_NOT_OBSERVED" -> "DKIM غير مرصود"
+        "EMAIL_POSTURE_SUMMARY" -> "ملخص سياسات البريد"
+        "ARCHIVE_ORG_ITEM" -> "عنصر في كتالوغ الأرشيف"
+        "PUBLIC_PROFILE" -> "نتيجة حساب عام"
+        "NEWS_ARTICLE" -> "مقالة"
         else -> value.replace('_', ' ')
     }
 

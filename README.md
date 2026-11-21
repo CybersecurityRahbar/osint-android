@@ -2,7 +2,18 @@
 
 **OSINT Workbench** is an offline-first Android OSINT workbench for collecting publicly available information, preserving evidence, and building explainable technical relationships without a private backend or a bundled large language model.
 
-> **Prototype status: v0.5.2-preview.** It is an actively developed prototype, not a complete replacement for SpiderFoot, Maltego, or a dedicated vulnerability scanner.
+> **Prototype status: v0.6.0-preview.** It is an actively developed prototype, not a complete replacement for SpiderFoot, Maltego, or a dedicated vulnerability scanner.
+
+## What changed in 0.6.0
+
+- **Signal-room interface.** The whole UI was rebuilt around an intelligence-console language: near-black graphite surfaces, hairline structure, a single analytical accent (signal teal), monospace data, six modules (OPS, RECON, GRAPH, CASE, INTEL, SYS), a live UTC clock and a per-record confidence meter. Presentation only — no data or permission claims were added.
+- **Email authentication posture.** SPF, DMARC and eight common DKIM selectors are inspected over public DNS, with explicit "not observed" records and risk notes for `+all`, `p= none`, lookup-limit overruns and missing records.
+- **Archive.org catalogue search** in addition to Wayback CDX: archived texts and media related to the domain, each with its source URL.
+- **Username enumeration across ~30 platforms** (code hosts, social, package registries, identity and media). Each platform is classified as found, absent, blocked or unknown from an explicit positive/negative signature; HTTP 200 alone never counts as an account.
+- **Curated dork catalogue** (social, code, paste, documents, leaks, configs, archive, people, forums) folded into identifier search with a bounded query budget.
+- **Deterministic fusion pass** over every result set: extracted e-mails, phones, handles, domains, IPs and wallet strings, leak/breach keyword alerts, country hints and a transparent confidence score. It never asserts identity.
+- **Telegram bot automation rewritten.** The WebView is now a visible, correctly sized session; messages are inserted with several composer fallbacks, sent via the send button or a synthesized Enter, and the flow waits for the outgoing echo, the bot's value prompt and then the reply until it goes quiet. A tolerant prompt matcher, an explicit direct-send mode, a step log and a live DOM diagnostic make failures explainable instead of silent.
+- **Backups keep full context.** Exported entities now store the complete contextual kind (for example `HTTP_STATUS@example.com`), so restoring a backup no longer merges properties of different targets. Cases and scans can be deleted individually, and a confirmed local erase is available.
 
 ## Domain intelligence
 
@@ -36,7 +47,7 @@
 
 ## Multi-source news
 
-- Concurrent, bounded search through GDELT DOC API, Arabic/Saudi and English/US Google News RSS editions, Bing News RSS, and SearXNG News JSON. If those feeds all return no stories, the engine makes a smaller publisher-scoped Google News fallback for Reuters, BBC, Al Jazeera Arabic, and The Guardian.
+- Concurrent, bounded search through GDELT DOC API, Arabic/Saudi and English/US Google News RSS editions, Bing News RSS, and SearXNG News JSON. If those feeds all return no stories, the engine makes a smaller publisher-scoped Google News fallback across 16 outlets including Reuters, BBC, Al Jazeera Arabic, Al Arabiya, Sky News Arabia, Al Hurra, Asharq Al-Awsat, Al Mayadeen, The New York Times and NPR; the fallback also runs when the aggregated feeds return only a thin result set.
 - GDELT requests retry a small number of transient failures and report non-JSON/HTTP diagnostics rather than silently discarding the API error page.
 - Each article retains a publisher label, source domain, click-through URL, publication date when provided, language/country metadata, and an image URL when the source provides one.
 - Source failures are isolated; the screen can show partial results plus a warning naming failed or empty sources. Bing News RSS is an undocumented best-effort feed and may change without notice.
@@ -49,6 +60,7 @@
 - Relationship types distinguish DNS resolution, nameservers, mail exchanges, subdomains, archive captures, redirects, images, registration metadata, and observed web properties.
 - SQLite schema v3 preserves the same relation when it is supported by multiple recorded sources instead of overwriting the prior source. The graph groups matching edges and displays the stored sources and observations.
 - Repeated generic values (for example, an HTTP status or a page title) are scoped to the observed target to reduce accidental global “hub” relationships.
+- Entity backups store the full contextual kind key, and JSON restore accepts both the new full key and the older base kind.
 - An explainable, offline rule engine highlights shared-IP observations, stale/weak evidence, missing data, and suggested next verification steps. It does not invent identity links from name similarity.
 - Confidence values are heuristic source-quality indicators, not calibrated statistical probabilities.
 

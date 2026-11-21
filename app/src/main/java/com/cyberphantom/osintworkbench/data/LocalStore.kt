@@ -53,6 +53,26 @@ data class RelationRow(
     val observedAt: Long
 )
 
+internal data class RawEntity(
+    val value: String,
+    val kindKey: String,
+    val source: String,
+    val confidence: Int,
+    val createdAt: Long,
+    val updatedAt: Long
+)
+
+internal data class RawRelation(
+    val fromValue: String,
+    val fromKindKey: String,
+    val toValue: String,
+    val toKindKey: String,
+    val relation: String,
+    val source: String,
+    val confidence: Int,
+    val observedAt: Long
+)
+
 data class ScanRow(
     val id: Long,
     val target: String,
@@ -435,18 +455,94 @@ class LocalStore(context: Context) : SQLiteOpenHelper(
         return rows
     }
 
+    /**
+     * Raw entity rows keep the full contextual kind key (for example `HTTP_SERVER_HEADER@example.com`).
+     * The display models intentionally strip that suffix, so the backup format must not use them:
+     * otherwise two targets sharing the same generic value would merge on restore.
+     */
+    private fun rawEntities(limit: Int): List<RawEntity> {
+        val rows = mutableListOf<RawEntity>()
+        readableDatabase.rawQuery(
+            "SELECT value, kind, source, confidence, created_at, updated_at FROM entities ORDER BY updated_at DESC LIMIT ?",
+            arrayOf(limit.coerceIn(1, 100_000).toString())
+        ).use { cursor ->
+            while (cursor.moveToNext()) {
+                rows += RawEntity(
+                    value = cursor.getString(0),
+                    kindKey = cursor.getString(1),
+                    source = cursor.getString(2),
+                    confidence = cursor.getInt(3),
+                    createdAt = cursor.getLong(4),
+                    updatedAt = cursor.getLong(5)
+                )
+            }
+        }
+        return rows
+    }
+
+    private fun rawRelations(limit: Int): List<RawRelation> {
+        val rows = mutableListOf<RawRelation>()
+        readableDatabase.rawQuery(
+            """SELECT source_node.value, source_node.kind, target_node.value, target_node.kind,
+                      edges.relation, edges.source, edges.confidence, edges.observed_at
+               FROM edges
+               JOIN entities AS source_node ON source_node.id = edges.from_id
+               JOIN entities AS target_node ON target_node.id = edges.to_id
+               ORDER BY edges.observed_at DESC LIMIT ?""".trimIndent(),
+            arrayOf(limit.coerceIn(1, 200_000).toString())
+        ).use { cursor ->
+            while (cursor.moveToNext()) {
+                rows += RawRelation(
+                    fromValue = cursor.getString(0),
+                    fromKindKey = cursor.getString(1),
+                    toValue = cursor.getString(2),
+                    toKindKey = cursor.getString(3),
+                    relation = cursor.getString(4),
+                    source = cursor.getString(5),
+                    confidence = cursor.getInt(6),
+                    observedAt = cursor.getLong(7)
+                )
+            }
+        }
+        return rows
+    }
+
+    fun deleteCase(id: Long) {
+        writableDatabase.delete("work_cases", "id = ?", arrayOf(id.toString()))
+    }
+
+    fun deleteScan(id: Long) {
+        writableDatabase.delete("scans", "id = ?", arrayOf(id.toString()))
+    }
+
+    /** Irreversible local erase of every collected record. Used by the settings danger zone. */
+    fun clearAllData() {
+        val db = writableDatabase
+        db.beginTransaction()
+        try {
+            db.delete("edges", null, null)
+            db.delete("findings", null, null)
+            db.delete("scans", null, null)
+            db.delete("work_cases", null, null)
+            db.delete("entities", null, null)
+            db.setTransactionSuccessful()
+        } finally {
+            db.endTransaction()
+        }
+    }
+
     fun exportSnapshotJson(): String {
         val root = org.json.JSONObject()
             .put("format", "OSINT Workbench local workspace export")
             .put("formatVersion", 1)
             .put("exportedAt", System.currentTimeMillis())
         val entityArray = org.json.JSONArray()
-        entities(50_000).forEach { entity ->
+        rawEntities(50_000).forEach { entity ->
             entityArray.put(
                 org.json.JSONObject()
-                    .put("id", entity.id)
                     .put("value", entity.value)
-                    .put("kind", entity.kind)
+                    .put("kind", entity.kindKey)
+                    .put("kindBase", entity.kindKey.substringBefore('@'))
                     .put("source", entity.source)
                     .put("confidence", entity.confidence)
                     .put("createdAt", entity.createdAt)
@@ -454,13 +550,13 @@ class LocalStore(context: Context) : SQLiteOpenHelper(
             )
         }
         val edgeArray = org.json.JSONArray()
-        relations(100_000).forEach { edge ->
+        rawRelations(100_000).forEach { edge ->
             edgeArray.put(
                 org.json.JSONObject()
                     .put("from", edge.fromValue)
-                    .put("fromKind", edge.fromKind)
+                    .put("fromKind", edge.fromKindKey)
                     .put("to", edge.toValue)
-                    .put("toKind", edge.toKind)
+                    .put("toKind", edge.toKindKey)
                     .put("relation", edge.relation)
                     .put("source", edge.source)
                     .put("confidence", edge.confidence)
@@ -540,7 +636,8 @@ class LocalStore(context: Context) : SQLiteOpenHelper(
             for (index in 0 until entities.length()) {
                 val item = entities.optJSONObject(index) ?: continue
                 val value = item.optString("value").takeIf(String::isNotBlank) ?: continue
-                val kind = item.optString("kind").ifBlank { "IMPORTED" }
+                // New exports carry the full contextual key in `kind` (and the base in `kindBase`).
+                val kind = item.optString("kind").ifBlank { item.optString("kindBase") }.ifBlank { "IMPORTED" }
                 val newId = upsertEntity(
                     value = value,
                     kind = kind,
@@ -560,8 +657,9 @@ class LocalStore(context: Context) : SQLiteOpenHelper(
                 val toValue = item.optString("to")
                 val relation = item.optString("relation")
                 if (fromValue.isBlank() || toValue.isBlank() || relation.isBlank()) continue
-                val fromKind = item.optString("fromKind")
-                val toKind = item.optString("toKind")
+                // Full contextual keys are preserved in new exports; older backups only have the base kind.
+                val fromKind = item.optString("fromKind").ifBlank { item.optString("fromKindBase") }
+                val toKind = item.optString("toKind").ifBlank { item.optString("toKindBase") }
                 val fromId = findEntityId(fromValue, fromKind) ?: continue
                 val toId = findEntityId(toValue, toKind) ?: continue
                 addEdge(

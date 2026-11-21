@@ -780,3 +780,40 @@
 - الـ artifact: `osint-workbench-v0.5.2-preview-apk`، معرّفه `12446048312` وحجمه 19,543,416 بايت (ZIP). ملف APK المستخرج حجمه 20,186,664 بايت وبصمة SHA-256: `0f488a17efe4b3851fe1e5868eafe9e860ecaf4c9b0522d718bfd7df336db71a`.
 - تم تنزيل APK من الـ artifact والتحقق من وجود الملف محلياً. يثبت CI أن الاختبارات والبناء والتوقيع وفق الإعدادات نجحت؛ لكنه لا يختبر التمرير وإدخال بيانات Telegram أو استجابات البوت على هاتف فعلي.
 - رابط التشغيل الناجح: https://github.com/CybersecurityRahbar/osint-web/actions/runs/39825723822
+
+
+## 2026-11-21 — v0.6.0: إعادة تصميم كاملة + محركات استخباراتية جديدة + إصلاح أتمتة تيليجرام
+
+### قرارات هذه الدورة
+- الإبقاء على معرّف الحزمة `com.cyberphantom.osintworkbench.preview051` ونفس مفتاح التوقيع الثابت (`PREVIEW_KEYSTORE_PATH` / `PREVIEW_KEYSTORE_PASSWORD` / alias `osint-preview`) حتى تُثبَّت v0.6.0 فوق النسخة الحالية دون حذف أو إعادة تسجيل دخول Telegram.
+- رفع `versionCode` إلى 8 و`versionName` إلى `0.6.0`، وتحديث اسم Preview إلى «OSINT Workbench Preview 0.6»، وتفعيل `buildFeatures.buildConfig` لاستخدام `BuildConfig.VERSION_NAME` في شاشة الإعدادات.
+- استبدال الواجهة القديمة بالكامل بنظام «غرفة الإشارات»: `ui/design/IntelTheme.kt` و`IntelComponents.kt`، وواجهة جديدة في `ui/AppShell.kt` مع ست وحدات: OPS / RECON / GRAPH / CASE / INTEL / SYS، وساعة UTC حية وشريط سفلي.
+- حذف ملفات الواجهة القديمة (`WorkbenchApp.kt`, `WorkbenchTheme.kt`, `PublicResearchScreen.kt`, `DataManagementPanel.kt`, `PrivateSourcesSearchPanel.kt`, `PrivateSourcesSettingsPanel.kt`) واستبدالها بـ `ui/screens/*` و`ui/telegram/*` و`ui/util/Format.kt`؛ `MainActivity` يستورد `ui.design.WorkbenchTheme`.
+
+### محركات ومصادر جديدة
+- `EmailPostureEngine`: SPF/DMARC وثمانية محددات DKIM شائعة عبر Cloudflare DoH، مع سجلات صريحة للغياب وتحذيرات `+all` و`p=none` وتجاوز حد الاستعلامات. دوال التحليل `internal` لتُختبر.
+- `ArchiveOrgEngine`: بحث في كتالوغ Archive.org إضافةً إلى Wayback CDX.
+- `UsernameEnumerationEngine`: نحو 30 منصة مع تصنيف FOUND / NOT_FOUND / BLOCKED / UNKNOWN من بصمات صريحة؛ HTTP 200 وحده لا يُعدّ حساباً.
+- `DorkCatalogue`: 9 فئات، تُدمج داخل بحث المعرّفات بسقف استعلامات.
+- `IntelFusion`: استخراج بريد/هاتف/معرّف/نطاق/IP/محفظة، تنبيهات كلمات التسريب، مؤشرات دولة، ودرجة ثقة إرشادية موثقة.
+- `MultiSourceNewsEngine`: 16 ناشراً (منها سكاي نيوز عربية، الحرة، الشرق الأوسط، الميادين، NYT، NPR) وتشغيل مسار الناشرين عندما تكون النتائج المجمعة قليلة لا فارغة فقط.
+- `BroadPublicSearchAdapter` / `AdvancedPublicSearchEngine`: توسيع SearXNG إلى خمس نسخ، وربط dorks، وسقف طلبات.
+- `SourceRegistry`: جرد المصادر لعرضه في الواجهة.
+
+### تيليجرام والبوتات
+- إعادة كتابة الأتمتة في `ui/telegram/TelegramWeb.kt` و`PrivateSearchPanel.kt`: WebView مرئي بارتفاع 300dp (بدل 1dp الشفاف السابق)، تكوين كامل للجلسة، إدخال نص بعدة بدائل (execCommand ثم beforeinput/input)، إرسال عبر زر الإرسال أو Enter مُصنَّع، تحقق من صدى الرسالة الصادرة، انتظار مطالبة البوت، ثم جمع الردود الواردة حتى سكون 2.5 ثانية أو 60 ثانية.
+- مطابقة المطالبة أصبحت متسامحة: عبارة الإعدادات أولاً، ثم كلمات مفتاحية (رقم/هاتف/phone/number أو اسم/name)، مع خيار «إرسال القيمة مباشرة» للبوتات ذات الصياغة غير القياسية.
+- التحقق الصارم من هوية المحادثة أُزيل كشرط قاتل: يُسجَّل تحذيراً إذا تعذر تأكيد العنوان من الرابط، ويُتابع إذا كان المحرر جاهزاً — لأن هذا كان مرشحاً قوياً لفشل الإرسال سابقاً.
+- إضافة سجل خطوات مؤقت وسجل DOM تشخيصي (URL، العنوان، حالة المحرر، عدّ الرسائل، آخر وارد/صادر)، وحفظ الرد في قاعدة الأدلة مرتبطاً بالقيمة والمصدر.
+
+### البيانات والتقارير
+- `LocalStore`: التصدير والاستعادة يعتمدان الآن المفتاح السياقي الكامل (`KIND@target`) بدل النوع المجرد، مع قبول `kindBase` للنسخ القديمة؛ إضافة `deleteCase` و`deleteScan` و`clearAllData`.
+- `ReconPersistence`: نقل حفظ نتائج الاستطلاع من الواجهة إلى طبقة بيانات مستقلة مع خريطة علاقات موسعة تشمل سياسات البريد والأرشيف والاكتشاف.
+- `ReportActions` و`DataSection` جديدتان: حفظ/مشاركة HTML وJSON، تصدير/استعادة المساحة، حذف عملية، ومسح كلي بتأكيد.
+- `HtmlReportBuilder`: نص حدود التفسير أصبح مشروطاً بنوع العملية (سلبي فقط أم مع فحوص محدودة)، وأُضيفت تسميات للسجلات الجديدة.
+
+### الاختبارات
+- أُضيفت `DorkCatalogueTest` و`EmailPostureEngineTest` و`UsernameEnumerationEngineTest` و`IntelFusionTest` إلى اختبارات الوحدة.
+
+### حالة التحقق
+- لم يُبنَ المشروع محلياً التزاماً بطلب المستخدم (البناء داخل GitHub فقط). التحقق النهائي يعتمد على تشغيل Android CI بعد الـ push، ويجب تسجيل نتيجة التشغيل ورقم الـ artifact هنا قبل وصف النسخة بأنها مبنية. أتمتة Telegram تحتاج تجربة ميدانية على الهاتف بعد تثبيت التحديث فوق النسخة الحالية.

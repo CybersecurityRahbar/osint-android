@@ -24,7 +24,7 @@ internal class BroadPublicSearchAdapter {
     private data class ImageBatch(val results: List<PublicProfileResult>, val warnings: List<String>)
 
     suspend fun search(queries: List<String>, maxResults: Int, includeImages: Boolean): Outcome {
-        val terms = queries.map(String::trim).filter(String::isNotBlank).distinct().take(2)
+        val terms = queries.map(String::trim).filter(String::isNotBlank).distinct().take(3)
         if (terms.isEmpty()) return Outcome(emptyList(), listOf("لا توجد عبارة صالحة للبحث."), 0)
         val limit = maxResults.coerceIn(5, 40)
         val semaphore = Semaphore(8)
@@ -70,13 +70,17 @@ internal class BroadPublicSearchAdapter {
             Provider("Mojeek", "https://www.mojeek.com/search?q=$q&si=1"),
             Provider("Qwant JSON", "https://api.qwant.com/v3/search/web?q=$q&count=10&locale=en_us&safesearch=0", "qwant"),
             Provider("SearXNG · searx.be", "https://searx.be/search?q=$q&format=json", "searx"),
+            Provider("SearXNG · priv.au", "https://priv.au/search?q=$q&format=json", "searx"),
+            Provider("SearXNG · opnxng", "https://opnxng.com/search?q=$q&format=json", "searx"),
+            Provider("SearXNG · inetol", "https://search.inetol.net/search?q=$q&format=json", "searx"),
             Provider("Startpage", "https://www.startpage.com/do/search?q=$q&cat=web"),
             Provider("Yandex", "https://yandex.com/search/?text=$q&lr=84")
         ) else listOf(
             Provider("DuckDuckGo Lite", "https://lite.duckduckgo.com/lite/?q=$q"),
             Provider("Bing", "https://www.bing.com/search?q=$q&count=10"),
             Provider("Ecosia", "https://www.ecosia.org/search?q=$q"),
-            Provider("SearXNG · disroot", "https://search.disroot.org/search?q=$q&format=json", "searx")
+            Provider("SearXNG · disroot", "https://search.disroot.org/search?q=$q&format=json", "searx"),
+            Provider("SearXNG · searx.tiekoetter", "https://searx.tiekoetter.com/search?q=$q&format=json", "searx")
         )
     }
 

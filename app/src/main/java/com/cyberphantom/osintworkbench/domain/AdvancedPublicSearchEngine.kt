@@ -39,7 +39,7 @@ class AdvancedPublicSearchEngine {
         require(query.isNotBlank()) { "أدخل قيمة للبحث." }
         require(query.length <= 240) { "عبارة البحث طويلة جداً." }
 
-        return when (kind) {
+        val base = when (kind) {
             IdentifierKind.NAME -> listOf(
                 query,
                 "\"$query\"",
@@ -85,7 +85,18 @@ class AdvancedPublicSearchEngine {
                     "\"$query\" (site:pastebin.com OR site:stackoverflow.com OR site:medium.com)"
                 )
             }
-        }.distinct()
+        }
+
+        // Curated dork expansion adds document, archive, paste and leak surfaces from the
+        // reference catalogue while staying within a bounded request budget.
+        val dorkCategories = when (kind) {
+            IdentifierKind.NAME -> listOf(DorkCategory.PEOPLE, DorkCategory.DOCS)
+            IdentifierKind.USERNAME -> listOf(DorkCategory.SOCIAL, DorkCategory.CODE)
+            IdentifierKind.PHONE -> listOf(DorkCategory.FORUM, DorkCategory.SOCIAL)
+            IdentifierKind.EMAIL -> listOf(DorkCategory.LEAKS, DorkCategory.DOCS)
+        }
+        val dorks = DorkCatalogue.expand(query, dorkCategories, 3)
+        return (base + dorks).distinct().take(14)
     }
 
     /**
@@ -130,7 +141,10 @@ class AdvancedPublicSearchEngine {
             IdentifierKind.PHONE -> if (allQueries.size > 2) listOf(0, 2) else listOf(0, 1)
             IdentifierKind.EMAIL -> listOf(0, 1)
         }
-        val queries = queryIndexes.mapNotNull { allQueries.getOrNull(it) }.distinct()
+        val queries = buildList {
+            addAll(queryIndexes.mapNotNull { allQueries.getOrNull(it) })
+            allQueries.lastOrNull()?.let { if (it !in this) add(it) }
+        }.distinct().take(3)
         val limit = maxResults.coerceIn(5, 40)
 
         val broadOutcome = try {
