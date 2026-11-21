@@ -821,3 +821,35 @@
 - التشغيل التالي (run 4، ID `44947523596`، commit `fb0685b`) انتهى `success`: نجحت خطوة `Run unit tests` (بما فيها الاختبارات الأربعة الجديدة) ونجحت خطوة `Build debug APK`. خطوات التوقيع الثابت والرفع تخطّيت لأن السرّين `PREVIEW_KEYSTORE_BASE64` و`PREVIEW_KEYSTORE_PASSWORD` غير مضبوطين في هذا المستودع، لذلك لا يوجد artifact قابل للتنزيل بعد.
 - المتطلب المتبقي للتثبيت فوق النسخة الحالية: إضافة السرّين في https://github.com/CybersecurityRahbar/osint-android/settings/secrets/actions ثم إعادة تشغيل workflow `Android CI` على `main`؛ سيُرفع artifact `osint-workbench-v0.6.0-preview-apk` عندها فقط.
 - أتمتة Telegram تحتاج تجربة ميدانية على الهاتف بعد تثبيت التحديث فوق النسخة الحالية؛ نجاح CI يثبت الترجمة والاختبارات لا تفاعل WebView الحقيقي.
+
+
+## 2026-11-22 — ربط توقيع osint-android بنفس مفتاح osint-web
+
+### نتيجة مراجعة المستودعين
+- راجعت `CybersecurityRahbar/osint-web` (المصدر السابق) و`CybersecurityRahbar/osint-android` (مستودع التطوير الحالي)، وتأكدت أن المستودع الجديد يحتوي بالفعل على إعدادات التوقيع نفسها المنسوخة من المشروع السابق.
+- في `app/build.gradle.kts` الجديد، إعداد `previewStable` يقرأ `PREVIEW_KEYSTORE_PATH` و`PREVIEW_KEYSTORE_PASSWORD` واسم alias الافتراضي `osint-preview`. ويُسنَد هذا الإعداد إلى build type `debug` عند توافر المتغيرات.
+- في `.github/workflows/android.yml` الجديد، يقوم CI بقراءة السرّين `PREVIEW_KEYSTORE_BASE64` و`PREVIEW_KEYSTORE_PASSWORD`، ويفك Base64 إلى ملف PKCS#12 مؤقت داخل runner ثم يتحقق من alias بواسطة `keytool`. لا يُكتب المفتاح الخاص إلى المستودع.
+- معرّف التطبيق لقناة التحديث المستقرة ما زال `com.cyberphantom.osintworkbench.preview051`، والإصدار الحالي `versionCode=8` و`versionName=0.6.0`. لذلك لا ينبغي تغيير لاحقة `.preview051` أو المفتاح أو alias في الإصدارات اللاحقة.
+
+### التحقق من المفتاح السابق
+- استخدمت الملفين المحفوظين سابقاً في مكتبة المستخدم: `OSINT_PREVIEW_KEYSTORE_BASE64.txt` و`OSINT_PREVIEW_KEYSTORE_PASSWORD.txt`.
+- تم فك Base64 بنجاح، وفتح ملف PKCS#12 باستخدام كلمة المرور، ونجح `keytool` في قراءة مدخل المفتاح الخاص. alias الذي جرى التحقق منه: `osint-preview`.
+- بصمة شهادة SHA-256 الناتجة: `A2:0C:31:09:17:45:EA:92:F8:BF:A3:57:07:FA:13:A6:5D:5F:AB:6D:7C:4A:C8:3D:A7:F6:8C:DE:A5:3B:4E:78`. وهي تطابق البصمة الموثقة سابقاً في `osint-web/PROJECT_CONTEXT.md`. تم التحقق من تطابق هوية الشهادة دون إدراج المفتاح الخاص أو كلمة المرور في GitHub.
+
+### الحالة الفعلية في GitHub Actions
+- فحصت أحدث تشغيل Android CI في المستودع الجديد: التشغيل رقم 5، ID `44947850081`، على commit `35831bb3f7f311afeb4d1ff3159a9985a360157b`، بتاريخ 2026-11-21.
+- نجح `Run unit tests` و`Build debug APK`، لكن تخطّى التشغيل `Prepare stable preview signing` و`Upload stable-signed preview APK` ورفع الملخص الخاص بالتوقيع؛ ونفّذ بدلاً منها خطوة توضيح ضرورة ضبط أسرار التوقيع. لذلك **لم ينتج هذا التشغيل APK قابلاً للتنزيل كتحديث مستقر**، ولا يجوز استخدام APK مؤقت موقّع بمفتاح GitHub runner للتحديث فوق التطبيق المثبت.
+- السبب أن GitHub Actions secrets على مستوى المستودع القديم لا تنتقل تلقائياً إلى المستودع الجديد. يجب إضافة السرّين نفسيهما في إعدادات `osint-android` أيضاً، ما لم تكن الأسرار مضبوطة عمداً على مستوى Organization مع إتاحة الوصول لهذا المستودع.
+- لا تستطيع أداة GitHub المتصلة الحالية إنشاء/تعديل Actions secrets؛ لذلك لم أرسل قيم المفاتيح إلى API ولم أضعها في ملفات عامة. المطلوب الوحيد من مالك المستودع هو إدخال القيم من الملفين المحفوظين إلى السرّين المذكورين.
+
+### تغييرات التوثيق والحماية في هذه الجولة
+- حدّثت `docs/STABLE_PREVIEW_SIGNING.md` ليخص `osint-android v0.6.0`، ويعرض البصمة والـ alias واسم الـ artifact الحالي وخطوات ضبط الأسرار.
+- حدّثت `README.md` من اسم artifact القديم `osint-workbench-v0.5.2-preview-apk` إلى `osint-workbench-v0.6.0-preview-apk`.
+- وسّعت `.gitignore` لاستبعاد ملفات `*.jks` و`*.keystore` و`*.p12` و`*.pfx` وملفات Base64 وكلمات مرور keystore.
+- لم أغيّر كود التوقيع أو هوية التطبيق لأنها مطابقة بالفعل للمستودع السابق، ولم أرفع أي مفتاح أو كلمة مرور إلى GitHub.
+
+### الخطوة المتبقية
+- أضف `PREVIEW_KEYSTORE_BASE64` و`PREVIEW_KEYSTORE_PASSWORD` في:
+  https://github.com/CybersecurityRahbar/osint-android/settings/secrets/actions
+- ثم أعد تشغيل `Actions → Android CI → Run workflow` على `main`. لا تعتمد إصداراً للتثبيت إلا إذا نجحت خطوة `Prepare stable preview signing` وظهرت خطوة `Upload stable-signed preview APK` بنتيجة `success` مع artifact `osint-workbench-v0.6.0-preview-apk`.
+- عند ثبات معرّف التطبيق والشهادة نفسها، يمكن تثبيت البناء الجديد كتحديث فوق نسخة `.preview051` المتوافقة دون حذف بيانات التطبيق. إذا كانت النسخة المثبتة مختلفة في application ID، فلن يكون ذلك تحديثاً فوق الحزمة نفسها.
