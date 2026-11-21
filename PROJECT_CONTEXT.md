@@ -886,3 +886,39 @@
 - هوية القناة لم تتغير في هذا البناء: `com.cyberphantom.osintworkbench.preview051`، `versionCode=8`، `versionName=0.6.0`، alias `osint-preview`.
 - يثبت نجاح CI أن الاختبارات وإعداد المفتاح والبناء والرفع اكتملت. لم يتم تثبيت التطبيق على هاتف فعلي في هذه الجلسة؛ لذلك يظل اختبار الترقية الفعلي على الهاتف هو التحقق النهائي من استمرار بيانات التطبيق والجلسة.
 - رابط تشغيل البناء: https://github.com/CybersecurityRahbar/osint-android/actions/runs/44950488102
+
+
+## 2026-11-22 — نجاح بناء APK بعد إضافة أسرار التوقيع
+
+### نتيجة GitHub Actions
+- شُغّل Android CI على `main` عبر التشغيل رقم 12، ID `44950488102`، commit `c68d203c337b91fed33ae8690f9d3d9d1835342b`.
+- الحالة النهائية: `success`.
+- نجحت جميع الخطوات الجوهرية: إعداد JDK وGradle وAndroid SDK، تثبيت حزم SDK، `Run unit tests`، `Prepare stable preview signing`، `Build debug APK`، و`Upload stable-signed preview APK`.
+- نجاح `Prepare stable preview signing` يثبت أن GitHub Actions تمكّن من فك Base64 وفتح keystore والتحقق من كلمة المرور وalias `osint-preview`. خطوة الرفع نجحت، فلا يتعلق هذا البناء بمفتاح Debug مؤقت.
+
+### ملف البناء الناتج
+- اسم Artifact: `osint-workbench-v0.6.0-preview-apk`.
+- Artifact ID: `14725750388`.
+- حجم ZIP: `19,622,040` بايت.
+- صلاحية Artifact في GitHub حتى `2026-12-05T21:15:09Z`.
+- محتوى ZIP: `app-debug.apk` بحجم `20,268,693` بايت.
+- SHA-256 لملف APK: `b2cb958283df93b617647f7c74b82dadfc92c7ec8adbb367df7c4137b4da61b9`.
+- SHA-256 للـ ZIP كما سجله GitHub: `ece3f58076e961a0c6d398e251b096877b08b3dd70e39c443a11bbef08c3a1f6`.
+- تم تنزيل ZIP، واختبار سلامة الأرشيف ونجاحه، واستخراج APK منه.
+
+### فحص شهادة APK
+- فُك APK Signing Block وفُحص وجود مخطط التوقيع v2.
+- شهادة الموقّع داخل APK لها بصمة SHA-256:
+  `A2:0C:31:09:17:45:EA:92:F8:BF:A3:57:07:FA:13:A6:5D:5F:AB:6D:7C:4A:C8:3D:A7:F6:8C:DE:A5:3B:4E:78`.
+- البصمة تطابق شهادة المفتاح السابق `osint-preview` التي جرى التحقق منها في ملف PKCS#12، ما يؤكد استخدام هوية شهادة التوقيع نفسها.
+- إعدادات Gradle التي بُني بها التطبيق: application ID `com.cyberphantom.osintworkbench.preview051`، و`versionCode=8`، و`versionName=0.6.0`.
+
+### حدود التحقق
+- نجح CI في اختبارات الوحدة، والتجميع، والتوقيع، ورفع artifact.
+- تم فحص سلامة ZIP وبصمة شهادة APK بشكل مستقل.
+- لم يتم تثبيت التطبيق على هاتف فعلي من بيئة العمل هذه؛ لذلك يبقى التحقق الميداني من تحديث النسخة الموجودة وسلامة البيانات وجلسة Telegram خطوة بعد التثبيت.
+- لا تغيّر application ID أو keystore أو alias في التحديثات القادمة. يجب زيادة `versionCode` في كل إصدار جديد.
+
+### روابط ومرجع التشغيل
+- Actions run: https://github.com/CybersecurityRahbar/osint-android/actions/runs/44950488102
+- Actions artifact: `osint-workbench-v0.6.0-preview-apk` (ID `14725750388`).
