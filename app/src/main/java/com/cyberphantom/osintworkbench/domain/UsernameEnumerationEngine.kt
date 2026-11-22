@@ -61,7 +61,7 @@ class UsernameEnumerationEngine {
         PlatformProbe("Docker Hub", "حزم", "https://hub.docker.com/v2/users/%s/", ProbeKind.DOCKERHUB),
         PlatformProbe("Keybase", "هوية", "https://keybase.io/_/api/1.0/user/lookup.json?username=%s", ProbeKind.KEYBASE),
         PlatformProbe("Mastodon", "مجتمع", "https://mastodon.social/api/v1/accounts/lookup?acct=%s", ProbeKind.MASTODON),
-        PlatformProbe("Bluesky", "مجتمع", "https://public.api.bsky.app/xrpc/com.atproto.identity.resolveHandle?handle=%s.bsky.social", ProbeKind.BLUESKY),
+        PlatformProbe("Bluesky", "مجتمع", "https://public.api.bsky.app/xrpc/com.atproto.identity.resolveHandle?handle=%s", ProbeKind.BLUESKY),
         PlatformProbe("Steam", "ألعاب", "https://steamcommunity.com/id/%s/?xml=1", ProbeKind.STEAM),
         PlatformProbe("YouTube", "فيديو", "https://www.youtube.com/@%s", ProbeKind.HTML,
             positiveMarker = "\"channelId\"",
@@ -93,9 +93,9 @@ class UsernameEnumerationEngine {
         PlatformProbe("Linktree", "روابط", "https://linktr.ee/%s", ProbeKind.HTML,
             negativeMarkers = listOf("Page not found", "404")),
         PlatformProbe("Twitter / X", "مجتمع", "https://x.com/%s", ProbeKind.HTML,
-            negativeMarkers = listOf("This account doesn’t exist", "This account doesn&#39;t exist", "Log in")),
+            negativeMarkers = listOf("This account doesn’t exist", "This account doesn&#39;t exist")),
         PlatformProbe("Instagram", "مجتمع", "https://www.instagram.com/%s/", ProbeKind.HTML,
-            negativeMarkers = listOf("Sorry, this page isn&#39;t available", "login", "Log in")),
+            negativeMarkers = listOf("Sorry, this page isn&#39;t available")),
         PlatformProbe("TikTok", "فيديو", "https://www.tiktok.com/@%s", ProbeKind.HTML,
             negativeMarkers = listOf("Couldn&#39;t find this account", "Couldn't find this account"))
     )
@@ -120,7 +120,8 @@ class UsernameEnumerationEngine {
     }
 
     private fun probe(platform: PlatformProbe, username: String): UsernameHit {
-        val encoded = URLEncoder.encode(username, StandardCharsets.UTF_8.name())
+        val lookupValue = if (platform.kind == ProbeKind.BLUESKY && !username.contains('.')) "$username.bsky.social" else username
+        val encoded = URLEncoder.encode(lookupValue, StandardCharsets.UTF_8.name())
         val url = platform.urlTemplate.replace("%s", encoded)
         val outcome = runCatching { fetch(url, platform.kind) }
         if (outcome.isFailure) {
@@ -184,7 +185,7 @@ class UsernameEnumerationEngine {
             }
         }
         return if (ambiguous) {
-            hit(ProbeStatus.NOT_FOUND, 65, "استجابة 200 لا تحتوي هوية الحساب المتوقعة.")
+            hit(ProbeStatus.UNKNOWN, 0, "استجابة 200 لا تحتوي بصمة كافية لتأكيد وجود الحساب أو غيابه.")
         } else {
             hit(ProbeStatus.FOUND, 82, "المصدر أعاد هوية حساب عامة لهذا الاسم.")
         }
