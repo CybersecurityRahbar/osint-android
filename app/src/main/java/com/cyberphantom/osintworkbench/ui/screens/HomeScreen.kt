@@ -219,34 +219,37 @@ fun HomeScreen(
             )
         } else {
             findings.take(4).forEach { finding ->
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(IntelColors.Panel, RoundedCornerShape(2.dp))
-                        .clickable { onOpenTab(WorkbenchTab.NETWORK) }
-                        .padding(10.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(9.dp)
+                IntelPanel(
+                    modifier = Modifier.clickable { onOpenTab(WorkbenchTab.NETWORK) },
+                    accent = if (finding.severity == "warning") IntelColors.Amber else IntelColors.Signal,
+                    contentPadding = 10
                 ) {
-                    Box(
-                        Modifier
-                            .size(5.dp)
-                            .background(if (finding.severity == "warning") IntelColors.Amber else IntelColors.Signal)
-                    )
-                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                        Text(
-                            finding.title,
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = IntelColors.Text,
-                            maxLines = 1
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(9.dp)
+                    ) {
+                        Box(
+                            Modifier.size(5.dp).background(
+                                if (finding.severity == "warning") IntelColors.Amber else IntelColors.Signal,
+                                RoundedCornerShape(1.dp)
+                            )
                         )
-                        DataText(
-                            "${finding.source} · ${formatTime(finding.observedAt)}",
-                            IntelColors.TextFaint,
-                            size = 9,
-                            maxLines = 1
-                        )
+                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            Text(
+                                finding.title,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = IntelColors.Text,
+                                maxLines = 1
+                            )
+                            DataText(
+                                "${finding.source} · ${formatTime(finding.observedAt)}",
+                                IntelColors.TextFaint,
+                                size = 9,
+                                maxLines = 1
+                            )
+                        }
+                        Icon(Icons.Filled.ArrowForward, contentDescription = null, tint = IntelColors.SteelBright, modifier = Modifier.size(13.dp))
                     }
                 }
             }
@@ -276,25 +279,29 @@ private fun CapabilityRow(
     accent: Color,
     onClick: () -> Unit
 ) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(IntelColors.Panel, RoundedCornerShape(2.dp))
-            .clickable(onClick = onClick)
-            .padding(11.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(10.dp)
+    IntelPanel(
+        modifier = Modifier.clickable(onClick = onClick),
+        accent = accent,
+        contentPadding = 11
     ) {
-        Box(
-            Modifier.size(30.dp).background(accent.copy(alpha = 0.12f), RoundedCornerShape(2.dp)),
-            contentAlignment = Alignment.Center
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            Icon(icon, contentDescription = null, tint = accent, modifier = Modifier.size(16.dp))
+            Box(
+                Modifier.size(30.dp).background(
+                    accent.copy(alpha = 0.16f),
+                    RoundedCornerShape(3.dp)
+                ),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(icon, contentDescription = null, tint = accent, modifier = Modifier.size(16.dp))
+            }
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(title, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = IntelColors.Text)
+                Text(detail, fontSize = 9.sp, color = IntelColors.TextDim, lineHeight = 13.sp)
+            }
+            Icon(Icons.Filled.ArrowForward, contentDescription = null, tint = IntelColors.SteelBright, modifier = Modifier.size(14.dp))
         }
-        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text(title, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = IntelColors.Text)
-            Text(detail, fontSize = 9.sp, color = IntelColors.TextFaint, lineHeight = 13.sp)
-        }
-        Icon(Icons.Filled.ArrowForward, contentDescription = null, tint = IntelColors.TextFaint, modifier = Modifier.size(14.dp))
     }
 }
