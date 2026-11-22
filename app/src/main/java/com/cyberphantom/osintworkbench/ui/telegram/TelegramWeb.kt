@@ -51,6 +51,17 @@ object PrivateSessionHost {
             it.onPause()
         }
     }
+
+    @Synchronized
+    fun destroy() {
+        val view = retainedView ?: return
+        (view.parent as? ViewGroup)?.removeView(view)
+        runCatching { view.stopLoading() }
+        runCatching { CookieManager.getInstance().flush() }
+        runCatching { view.removeAllViews() }
+        runCatching { view.destroy() }
+        retainedView = null
+    }
 }
 
 
