@@ -31,6 +31,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.cyberphantom.osintworkbench.data.LocalStore
 import com.cyberphantom.osintworkbench.data.PrivateSourceBot
+import com.cyberphantom.osintworkbench.data.PrivateSourceFlow
 import com.cyberphantom.osintworkbench.data.PrivateSourcesStore
 import com.cyberphantom.osintworkbench.ui.design.DataText
 import com.cyberphantom.osintworkbench.ui.design.GhostButton
@@ -81,7 +82,7 @@ fun PrivateSourcesSettings(localStore: LocalStore, onSaved: () -> Unit) {
             )
             ModeChip(
                 selected = selectedTab == 1,
-                label = "الجلسة والتنفيذ",
+                label = "نافذة الجلسة",
                 onClick = { selectedTab = 1 },
                 modifier = Modifier.weight(1f),
                 accent = IntelColors.Signal
@@ -89,7 +90,7 @@ fun PrivateSourcesSettings(localStore: LocalStore, onSaved: () -> Unit) {
         }
 
         if (selectedTab == 1) {
-            PrivateSearchPanel(store = localStore, onSaved = onSaved)
+            PrivateSessionSettingsPanel()
         } else {
             IntelPanel {
                 MicroLabel("PRIVATE SOURCE REGISTRY", IntelColors.Violet)
@@ -184,12 +185,22 @@ fun PrivateSourcesSettings(localStore: LocalStore, onSaved: () -> Unit) {
                     MicroLabel("SOURCE CONFIGURATION", IntelColors.Violet)
                     IntelField(draft.name, { draft = draft.copy(name = it) }, "اسم المصدر")
                     IntelField(draft.username, { draft = draft.copy(username = it) }, "معرّف المصدر (بدون @)")
-                    IntelField(draft.numberCommand, { draft = draft.copy(numberCommand = it) }, "أمر البحث بالرقم")
-                    IntelField(draft.nameCommand, { draft = draft.copy(nameCommand = it) }, "أمر البحث بالاسم")
+                    SourceFlowSelector("طريقة البحث بالرقم", draft.numberFlow) { draft = draft.copy(numberFlow = it) }
+                    IntelField(
+                        draft.numberCommand,
+                        { draft = draft.copy(numberCommand = it) },
+                        if (draft.numberFlow == PrivateSourceFlow.VALUE_ONLY) "أمر الرقم (غير مستخدم)" else "أمر البحث بالرقم"
+                    )
                     IntelField(draft.numberPrompt, { draft = draft.copy(numberPrompt = it) }, "نص مطالبة الرقم المتوقعة")
+                    SourceFlowSelector("طريقة البحث بالاسم", draft.nameFlow) { draft = draft.copy(nameFlow = it) }
+                    IntelField(
+                        draft.nameCommand,
+                        { draft = draft.copy(nameCommand = it) },
+                        if (draft.nameFlow == PrivateSourceFlow.VALUE_ONLY) "أمر الاسم (غير مستخدم)" else "أمر البحث بالاسم"
+                    )
                     IntelField(draft.namePrompt, { draft = draft.copy(namePrompt = it) }, "نص مطالبة الاسم المتوقعة")
                     Text(
-                        "اترك الأمر فارغاً إذا كان المصدر لا يدعم هذا النوع. فعّل الإرسال المباشر من تبويب الجلسة فقط عندما لا يطلب المصدر قيمة بعد الأمر.",
+                        "اختر لكل نوع: أمر ثم مطالبة، أو أمر ثم إرسال القيمة، أو إرسال القيمة فقط دون أمر. في النمط الأخير لا يُرسل أي أمر إطلاقاً.",
                         fontSize = 8.sp,
                         color = IntelColors.TextFaint,
                         lineHeight = 12.sp
@@ -222,6 +233,32 @@ fun PrivateSourcesSettings(localStore: LocalStore, onSaved: () -> Unit) {
                         GhostButton(text = "إلغاء", onClick = { editing = null })
                     }
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SourceFlowSelector(
+    title: String,
+    value: PrivateSourceFlow,
+    onChange: (PrivateSourceFlow) -> Unit
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+        MicroLabel(title, IntelColors.TextDim)
+        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            PrivateSourceFlow.entries.forEach { flow ->
+                ModeChip(
+                    selected = value == flow,
+                    label = when (flow) {
+                        PrivateSourceFlow.COMMAND_AND_PROMPT -> "أمر + مطالبة"
+                        PrivateSourceFlow.COMMAND_THEN_VALUE -> "أمر + قيمة"
+                        PrivateSourceFlow.VALUE_ONLY -> "قيمة فقط"
+                    },
+                    onClick = { onChange(flow) },
+                    modifier = Modifier.weight(1f),
+                    accent = IntelColors.Violet
+                )
             }
         }
     }
