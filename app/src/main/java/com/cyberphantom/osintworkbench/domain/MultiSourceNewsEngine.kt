@@ -33,6 +33,25 @@ import org.w3c.dom.Element
  * Each story retains its publisher label, source URL, publication time, and image URL when supplied.
  */
 class MultiSourceNewsEngine {
+    private data class DirectFeed(
+        val name: String,
+        val url: String,
+        val language: String,
+        val country: String,
+        val host: String
+    )
+
+    private val directFeeds = listOf(
+        DirectFeed("BBC World", "https://feeds.bbci.co.uk/news/world/rss.xml", "en", "GB", "bbc.co.uk"),
+        DirectFeed("Al Jazeera English", "https://www.aljazeera.com/xml/rss/all.xml", "en", "QA", "aljazeera.com"),
+        DirectFeed("Al Jazeera Arabic", "https://www.aljazeera.net/rss", "ar", "QA", "aljazeera.net"),
+        DirectFeed("The Guardian World", "https://www.theguardian.com/world/rss", "en", "GB", "theguardian.com"),
+        DirectFeed("DW English", "https://rss.dw.com/rdf/rss-en-all", "en", "DE", "dw.com"),
+        DirectFeed("France 24 English", "https://www.france24.com/en/rss", "en", "FR", "france24.com"),
+        DirectFeed("France 24 Arabic", "https://www.france24.com/ar/rss", "ar", "FR", "france24.com"),
+        DirectFeed("Sky News Arabia", "https://www.skynewsarabia.com/rss.xml", "ar", "AE", "skynewsarabia.com")
+    )
+
     private val publishers = listOf(
         Publisher("Reuters", "reuters.com", "en-US", "US", "US:en"),
         Publisher("Associated Press", "apnews.com", "en-US", "US", "US:en"),
@@ -129,7 +148,19 @@ class MultiSourceNewsEngine {
             tasks.awaitAll()
         }
 
-        onProgress("توسيع البحث عبر الناشرين المستقلين…")
+        onProgress("قراءة خلاصات الناشرين المباشرة…")
+        val directOutcomes = coroutineScope {
+            val semaphore = Semaphore(6)
+            directFeeds.map { feed ->
+                async {
+                    runSource(semaphore, "Direct RSS · ${feed.name}") {
+                        queryDirectFeed(feed, clean, limit, includeImages)
+                    }
+                }
+            }.awaitAll()
+        }
+
+        onProgress("توسيع البحث عبر فهارس الناشرين…")
         val publisherOutcomes = coroutineScope {
             val semaphore = Semaphore(6)
             publishers.map { publisher ->
@@ -140,7 +171,7 @@ class MultiSourceNewsEngine {
                 }
             }.awaitAll()
         }
-        outcomes = outcomes + publisherOutcomes
+        outcomes = outcomes + directOutcomes + publisherOutcomes
 
         onProgress("فلترة التواريخ وإزالة المقالات المكررة…")
         val rawArticles = outcomes.flatMap { it.articles }
@@ -323,6 +354,40 @@ class MultiSourceNewsEngine {
         }.distinctBy { it.url }
     }
 
+    private suspend fun queryDirectFeed(
+        feed: DirectFeed,
+        query: String,
+        maxRecords: Int,
+        includeImages: Boolean
+    ): List<NewsArticle> = withContext(Dispatchers.IO) {
+        val xml = getText(feed.url, 8_000, "application/rss+xml, application/atom+xml, application/xml, text/xml")
+        val tokens = query.lowercase(Locale.ROOT)
+            .split(Regex("\\s+"))
+            .map { it.trim('\\'', '"', '(', ')', ',', '.', ':', ';') }
+            .filter { it.length >= 3 }
+        parseRss(
+            xml = xml,
+            requestedPublisher = null,
+            language = feed.language,
+            country = feed.country,
+            includeImages = includeImages,
+            providerLabelOverride = "Direct RSS · ${feed.name}",
+            publisherNameOverride = feed.name,
+            publisherDomainOverride = feed.host
+        ).asSequence()
+            .filter { article ->
+                if (tokens.isEmpty()) true
+                else {
+                    val searchable = (article.title + " " + article.description).lowercase(Locale.ROOT)
+                    val matched = tokens.count(searchable::contains)
+                    matched >= ((tokens.size + 1) / 2).coerceAtLeast(1) ||
+                        searchable.contains(query.lowercase(Locale.ROOT))
+                }
+            }
+            .take(maxRecords.coerceIn(1, 80))
+            .toList()
+    }
+
     private suspend fun queryGoogleNews(
         query: String,
         maxRecords: Int,
@@ -404,7 +469,9 @@ class MultiSourceNewsEngine {
         language: String,
         country: String,
         includeImages: Boolean = true,
-        providerLabelOverride: String? = null
+        providerLabelOverride: String? = null,
+        publisherNameOverride: String? = null,
+        publisherDomainOverride: String? = null
     ): List<NewsArticle> {
         require(xml.length <= 2_000_000) { "RSS response exceeds the parser size limit." }
         val factory = DocumentBuilderFactory.newInstance().apply {
@@ -428,6 +495,7 @@ class MultiSourceNewsEngine {
                 var title = ""
                 var link = ""
                 var publishedAt = ""
+                var description = ""
                 var sourceName = ""
                 var sourceUrl = ""
                 var imageUrl = ""
@@ -436,6 +504,9 @@ class MultiSourceNewsEngine {
                     val child = children.item(childIndex) as? Element ?: continue
                     when (child.tagName.substringAfter(':').lowercase(Locale.ROOT)) {
                         "title" -> title = child.textContent.orEmpty().trim()
+                        "description", "summary", "subtitle", "encoded" -> {
+                            if (description.isBlank()) description = child.textContent.orEmpty().trim()
+                        }
                         "link" -> {
                             val childLink = child.textContent.orEmpty().trim()
                             val href = child.getAttribute("href").trim()
@@ -469,10 +540,10 @@ class MultiSourceNewsEngine {
                 val actualDomain = sourceDomain.ifBlank { fallbackDomain }
                 val inferredPublisher = inferPublisherFromTitle(title)
                 val actualPublisher = sourceName.ifBlank {
-                    requestedPublisher?.name ?: inferredPublisher ?: publisherLabel(actualDomain)
+                    publisherNameOverride ?: requestedPublisher?.name ?: inferredPublisher ?: publisherLabel(actualDomain)
                 }
                 val attributedDomain = sourceDomain.ifBlank {
-                    requestedPublisher?.domain ?: knownPublisherDomain(actualPublisher) ?: actualDomain
+                    publisherDomainOverride ?: requestedPublisher?.domain ?: knownPublisherDomain(actualPublisher) ?: actualDomain
                 }
                 add(
                     NewsArticle(
@@ -484,12 +555,18 @@ class MultiSourceNewsEngine {
                         sourceCountry = country,
                         publisherName = actualPublisher,
                         imageUrl = imageUrl.takeIf { includeImages && it.startsWith("https://") },
-                        provider = providerLabelOverride ?: if (requestedPublisher == null) "News RSS" else "News RSS · " + requestedPublisher.name
+                        provider = providerLabelOverride ?: if (requestedPublisher == null) "News RSS" else "News RSS · " + requestedPublisher.name,
+                        description = stripMarkup(description).take(900)
                     )
                 )
             }
         }.distinctBy { "${it.title.lowercase(Locale.ROOT)}|${it.publisherName.lowercase(Locale.ROOT)}" }
     }
+
+    private fun stripMarkup(value: String): String =
+        value.replace(Regex("(?is)<[^>]+>"), " ")
+            .replace("&amp;", "&").replace("&quot;", "\"").replace("&#39;", "'")
+            .replace(Regex("\\s+"), " ").trim()
 
     private fun normalizeNewsUrl(raw: String): String {
         if (!raw.startsWith("https://")) return raw
