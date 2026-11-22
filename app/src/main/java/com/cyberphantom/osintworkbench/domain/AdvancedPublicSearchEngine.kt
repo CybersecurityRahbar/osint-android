@@ -23,7 +23,8 @@ data class PublicWebSearchResponse(
     val query: String,
     val results: List<PublicProfileResult>,
     val warnings: List<String>,
-    val providersAttempted: Int
+    val providersAttempted: Int,
+    val elapsedMs: Long = 0
 ) {
     val sourceCount: Int get() = results.map { it.provider }.distinct().size
 }
@@ -37,17 +38,25 @@ class AdvancedPublicSearchEngine {
     fun buildSearchQueries(rawQuery: String, kind: IdentifierKind): List<String> {
         val query = rawQuery.trim()
         require(query.isNotBlank()) { "أدخل قيمة للبحث." }
-        require(query.length <= 240) { "عبارة البحث طويلة جداً." }
+        require(query.length <= 240) { "العبارة طويلة جداً." }
 
         val base = when (kind) {
-            IdentifierKind.NAME -> listOf(
-                query,
-                "\"$query\"",
-                "\"$query\" site:reddit.com",
-                "\"$query\" (site:news.ycombinator.com OR site:medium.com)",
-                "\"$query\" (site:github.com OR site:gitlab.com OR site:stackoverflow.com)",
-                "\"$query\" (site:linkedin.com OR site:instagram.com OR site:facebook.com OR site:tiktok.com OR site:x.com)"
-            )
+            IdentifierKind.NAME -> buildList {
+                add(query)
+                add("\"$query\"")
+                val parts = query.split(Regex("\\s+")).filter { it.length > 1 }
+                if (parts.size >= 2) {
+                    add("\"${parts.first()} ${parts.last()}\"")
+                    parts.zipWithNext().forEach { (left, right) -> add("\"$left $right\"") }
+                }
+                add("\"$query\" site:reddit.com")
+                add("\"$query\" (site:linkedin.com OR site:facebook.com OR site:instagram.com OR site:tiktok.com OR site:x.com OR site:threads.net)")
+                add("\"$query\" (site:aljazeera.net OR site:bbc.com OR site:reuters.com OR site:apnews.com OR site:alarabiya.net)")
+                add("\"$query\" (site:github.com OR site:gitlab.com OR site:stackoverflow.com OR site:medium.com)")
+                add("\"$query\" (filetype:pdf OR filetype:doc OR filetype:docx)")
+                add("\"$query\" (site:academia.edu OR site:researchgate.net OR site:scholar.google.com)")
+                add("\"$query\" (site:gov OR site:edu OR site:org)")
+            }
             IdentifierKind.USERNAME -> {
                 val username = query.removePrefix("@")
                 require(username.matches(Regex("[A-Za-z0-9._-]{1,100}"))) {
@@ -56,9 +65,10 @@ class AdvancedPublicSearchEngine {
                 listOf(
                     "\"$username\"",
                     "\"$username\" site:reddit.com",
-                    "\"$username\" (site:github.com OR site:gitlab.com)",
-                    "\"$username\" (site:youtube.com OR site:x.com)",
-                    "\"$username\" (site:stackoverflow.com OR site:medium.com OR site:dev.to)"
+                    "\"$username\" (site:github.com OR site:gitlab.com OR site:gist.github.com)",
+                    "\"$username\" (site:youtube.com OR site:x.com OR site:threads.net OR site:bsky.app)",
+                    "\"$username\" (site:instagram.com OR site:tiktok.com OR site:facebook.com OR site:linkedin.com)",
+                    "\"$username\" (site:medium.com OR site:dev.to OR site:stackoverflow.com OR site:quora.com)"
                 )
             }
             IdentifierKind.PHONE -> {
@@ -71,8 +81,9 @@ class AdvancedPublicSearchEngine {
                     add("site:reddit.com \"$digits\"")
                     add("\"$digits\" (site:github.com OR site:gitlab.com OR site:stackoverflow.com)")
                     add("\"$digits\" (site:facebook.com OR site:instagram.com OR site:tiktok.com OR site:x.com OR site:youtube.com)")
+                    add("\"$digits\" (site:pastebin.com OR site:medium.com OR site:quora.com)")
                     normalized.forEach { if (it != query && it != digits) add("\"$it\"") }
-                }.distinct().take(6)
+                }.distinct()
             }
             IdentifierKind.EMAIL -> {
                 require(query.contains("@") && query.substringAfter("@").contains(".")) {
@@ -81,22 +92,21 @@ class AdvancedPublicSearchEngine {
                 listOf(
                     "\"$query\"",
                     "\"$query\" site:reddit.com",
-                    "\"$query\" (site:github.com OR site:gitlab.com)",
-                    "\"$query\" (site:pastebin.com OR site:stackoverflow.com OR site:medium.com)"
+                    "\"$query\" (site:github.com OR site:gitlab.com OR site:gist.github.com)",
+                    "\"$query\" (site:pastebin.com OR site:stackoverflow.com OR site:medium.com)",
+                    "\"$query\" (filetype:pdf OR filetype:csv OR filetype:json)"
                 )
             }
         }
 
-        // Curated dork expansion adds document, archive, paste and leak surfaces from the
-        // reference catalogue while staying within a bounded request budget.
         val dorkCategories = when (kind) {
-            IdentifierKind.NAME -> listOf(DorkCategory.PEOPLE, DorkCategory.DOCS)
-            IdentifierKind.USERNAME -> listOf(DorkCategory.SOCIAL, DorkCategory.CODE)
+            IdentifierKind.NAME -> listOf(DorkCategory.PEOPLE, DorkCategory.SOCIAL, DorkCategory.DOCS, DorkCategory.FORUM)
+            IdentifierKind.USERNAME -> listOf(DorkCategory.SOCIAL, DorkCategory.CODE, DorkCategory.FORUM)
             IdentifierKind.PHONE -> listOf(DorkCategory.FORUM, DorkCategory.SOCIAL)
-            IdentifierKind.EMAIL -> listOf(DorkCategory.LEAKS, DorkCategory.DOCS)
+            IdentifierKind.EMAIL -> listOf(DorkCategory.LEAKS, DorkCategory.DOCS, DorkCategory.CODE)
         }
-        val dorks = DorkCatalogue.expand(query, dorkCategories, 3)
-        return (base + dorks).distinct().take(14)
+        val dorks = DorkCatalogue.expand(query, dorkCategories, 12)
+        return (base + dorks).distinct().take(26)
     }
 
     /**
@@ -128,74 +138,104 @@ class AdvancedPublicSearchEngine {
     suspend fun search(
         rawQuery: String,
         kind: IdentifierKind,
-        maxResults: Int = 30,
-        includeImages: Boolean = true
+        maxResults: Int = 60,
+        includeImages: Boolean = true,
+        onProgress: (String) -> Unit = {}
     ): PublicWebSearchResponse {
+        val started = System.nanoTime()
         val query = rawQuery.trim()
         val allQueries = buildSearchQueries(query, kind)
-        // A small number of deliberately different queries avoids repeatedly asking the
-        // exact same phrase while still covering the common dork variants.
-        val queryIndexes = when (kind) {
-            IdentifierKind.NAME -> listOf(0, 5)
-            IdentifierKind.USERNAME -> listOf(0, 2)
-            IdentifierKind.PHONE -> if (allQueries.size > 2) listOf(0, 2) else listOf(0, 1)
-            IdentifierKind.EMAIL -> listOf(0, 1)
-        }
-        val queries = buildList {
-            addAll(queryIndexes.mapNotNull { allQueries.getOrNull(it) })
-            allQueries.lastOrNull()?.let { if (it !in this) add(it) }
-        }.distinct().take(3)
-        val limit = maxResults.coerceIn(5, 40)
+        val queries = when (kind) {
+            IdentifierKind.NAME -> allQueries.take(5)
+            IdentifierKind.USERNAME -> allQueries.take(4)
+            IdentifierKind.PHONE -> allQueries.take(5)
+            IdentifierKind.EMAIL -> allQueries.take(4)
+        }.distinct()
+        val limit = maxResults.coerceIn(10, 80)
+        onProgress("توسيع العبارة إلى ${queries.size} مسارات بحث متخصصة…")
 
-        val broadOutcome = try {
-            BroadPublicSearchAdapter().search(queries, limit, includeImages)
-        } catch (cancelled: CancellationException) {
-            throw cancelled
-        } catch (error: Exception) {
-            BroadPublicSearchAdapter.Outcome(
-                emptyList(),
-                listOf("محركات البحث متعددة المصادر: ${error.message ?: "تعذر إكمال الطلب"}"),
-                0
-            )
-        }
-
-        val baseResults = broadOutcome.results.map { result ->
-            if (!result.imageUrl.isNullOrBlank()) {
-                result.copy(relevanceScore = maxOf(result.relevanceScore, 45))
-            } else {
-                result.copy(relevanceScore = calculateRelevance(query, kind, result, 0))
+        val (broadOutcome, enrichment) = coroutineScope {
+            val web = async {
+                try {
+                    BroadPublicSearchAdapter().search(queries, limit, includeImages)
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (error: Exception) {
+                    BroadPublicSearchAdapter.Outcome(
+                        emptyList(),
+                        listOf("فهارس الويب: ${error.message ?: "تعذر إكمال البحث"}"),
+                        0
+                    )
+                }
             }
+            val open = async {
+                try {
+                    onProgress("جمع نتائج قواعد المعرفة والمجتمعات المفتوحة…")
+                    OpenSourceEnrichmentEngine().search(query, kind, minOf(limit, 60))
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (error: Exception) {
+                    OpenSourceEnrichmentEngine.Outcome(
+                        emptyList(),
+                        listOf("مصادر المعرفة المفتوحة: ${error.message ?: "تعذر الوصول"}"),
+                        0
+                    )
+                }
+            }
+            web.await() to open.await()
         }
 
-        val shouldTryInstantAnswer = baseResults.count { it.imageUrl.isNullOrBlank() } < minOf(5, limit)
+        val shouldTryInstantAnswer = broadOutcome.results.count { it.imageUrl.isNullOrBlank() } < minOf(6, limit)
+        onProgress("تحليل التكرارات وترتيب النتائج حسب صلة العبارة…")
         val instantResults = if (shouldTryInstantAnswer) {
-            runCatching { searchInstantAnswer(query, limit) }
+            runCatching { searchInstantAnswer(query, minOf(10, limit)) }
                 .getOrDefault(emptyList())
-                .map { it.copy(relevanceScore = calculateRelevance(query, kind, it, 0)) }
         } else emptyList()
 
-        // Keep image previews visible: exact text matches can otherwise push every image
-        // below the UI limit. Images are deduplicated by image URL; web records by page URL.
-        val uniqueBase = (baseResults + instantResults).distinctBy {
-            if (!it.imageUrl.isNullOrBlank()) "image:" + canonicalUrl(it.imageUrl)
-            else canonicalUrl(it.url)
-        }
-        val imageCandidates = uniqueBase.filter { !it.imageUrl.isNullOrBlank() }
-            .sortedWith(compareByDescending<PublicProfileResult> { it.relevanceScore }.thenByDescending { it.confidence })
-        val textCandidates = uniqueBase.filter { it.imageUrl.isNullOrBlank() }
-            .sortedWith(compareByDescending<PublicProfileResult> { it.relevanceScore }.thenByDescending { it.confidence })
-        val reservedImageSlots = minOf(imageCandidates.size, if (includeImages) maxOf(3, limit / 3) else 0)
-        val merged = imageCandidates.take(reservedImageSlots) + textCandidates.take(limit - reservedImageSlots)
+        val allResults = (broadOutcome.results + enrichment.results + instantResults)
+            .filter { it.url.startsWith("https://") }
+            .map { result ->
+                if (!result.imageUrl.isNullOrBlank()) {
+                    result.copy(relevanceScore = maxOf(result.relevanceScore, calculateRelevance(query, kind, result, 0)))
+                } else {
+                    result.copy(relevanceScore = calculateRelevance(query, kind, result, 0))
+                }
+            }
+            .distinctBy {
+                if (!it.imageUrl.isNullOrBlank()) "image:" + canonicalUrl(it.imageUrl)
+                else canonicalUrl(it.url)
+            }
 
-        val warnings = (broadOutcome.warnings + if (shouldTryInstantAnswer && instantResults.isEmpty()) {
-            listOf("لم يُرجع مصدر المعرفة الإضافي نتائج؛ لا يؤثر ذلك في نتائج محركات البحث الأخرى.")
-        } else emptyList()).distinct()
+        val images = allResults.filter { !it.imageUrl.isNullOrBlank() }
+            .sortedWith(compareByDescending<PublicProfileResult> { it.relevanceScore }.thenByDescending { it.confidence })
+        val pages = allResults.filter { it.imageUrl.isNullOrBlank() }
+            .sortedWith(compareByDescending<PublicProfileResult> { it.relevanceScore }.thenByDescending { it.confidence })
+        val imageSlots = minOf(images.size, if (includeImages) maxOf(4, limit / 3) else 0)
+        val merged = (pages.take(limit - imageSlots) + images.take(imageSlots))
+            .sortedWith(compareByDescending<PublicProfileResult> { it.relevanceScore }.thenByDescending { it.confidence })
+            .take(limit)
 
+        val warnings = buildList {
+            addAll(broadOutcome.warnings)
+            addAll(enrichment.warnings)
+            if (shouldTryInstantAnswer && instantResults.isEmpty()) {
+                add("لم يُرجع مصدر الإجابة الفورية نتائج إضافية؛ لا يؤثر ذلك في بقية الفهارس.")
+            }
+            if (merged.isEmpty()) {
+                add("لم تُستخرج نتائج من المصادر التي أمكن الوصول إليها. قد تكون الفهارس محدودة أو محجوبة أو لا تحتوي العبارة؛ النتيجة الصفرية لا تثبت غياب المعلومات.")
+            }
+            if (kind == IdentifierKind.NAME) {
+                add("نتائج الأسماء قرائن بحث وليست إثباتاً لهوية شخص بعينه. طابق الاسم والسياق والمصدر قبل الربط.")
+            }
+        }.distinct()
+
+        onProgress("اكتمل الجمع: ${merged.size} سجل من مصادر متعددة.")
         return PublicWebSearchResponse(
             query = query,
             results = merged,
             warnings = warnings,
-            providersAttempted = broadOutcome.attempted + if (shouldTryInstantAnswer) 1 else 0
+            providersAttempted = broadOutcome.attempted + enrichment.attempted + if (shouldTryInstantAnswer) 1 else 0,
+            elapsedMs = ((System.nanoTime() - started) / 1_000_000L).coerceAtLeast(0L)
         )
     }
 
