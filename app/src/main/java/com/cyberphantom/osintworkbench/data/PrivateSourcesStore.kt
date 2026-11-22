@@ -41,7 +41,7 @@ class PrivateSourcesStore(context: Context) {
             val defaults = listOf(
                 PrivateSourceBot(
                     id = "yemennumber-default",
-                    name = "بوت كاشف الارقام اليمنية 967",
+                    name = "دليل الأرقام اليمنية 967",
                     username = "Yemennumber_bot",
                     numberCommand = "/search_by_number",
                     nameCommand = "/search_by_name",
