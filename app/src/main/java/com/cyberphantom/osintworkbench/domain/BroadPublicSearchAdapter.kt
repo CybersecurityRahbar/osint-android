@@ -24,10 +24,10 @@ internal class BroadPublicSearchAdapter {
     private data class ImageBatch(val results: List<PublicProfileResult>, val warnings: List<String>)
 
     suspend fun search(queries: List<String>, maxResults: Int, includeImages: Boolean): Outcome {
-        val terms = queries.map(String::trim).filter(String::isNotBlank).distinct().take(6)
+        val terms = queries.map(String::trim).filter(String::isNotBlank).distinct().take(4)
         if (terms.isEmpty()) return Outcome(emptyList(), listOf("لا توجد عبارة صالحة للبحث."), 0)
         val limit = maxResults.coerceIn(10, 80)
-        val semaphore = Semaphore(8)
+        val semaphore = Semaphore(4)
         val (attempts, images) = coroutineScope {
             val webTask = async {
                 terms.flatMapIndexed { index, query ->
@@ -62,7 +62,7 @@ internal class BroadPublicSearchAdapter {
         val webLimit = (limit - imageLimit).coerceAtLeast(1)
         val merged = (allWeb.take(webLimit) + distinctImages.take(imageLimit))
         val warnings = buildList {
-            attempts.filter { it.error != null }.take(12).forEach { add(it.name + ": " + it.error) }
+            attempts.filter { it.error != null }.take(7).forEach { add(it.name + ": " + it.error) }
             addAll(images.warnings.take(4))
             if (allWeb.isEmpty()) add("لم تُستخرج صفحات ويب من المصادر التي أمكن الوصول إليها. قد تكون المصادر محجوبة أو تغير قالبها؛ النتيجة الصفرية لا تثبت غياب المعلومات.")
             if (includeImages && images.results.isEmpty()) add("لم تُرجع مصادر الصور روابط صور قابلة للعرض في هذا البحث.")
@@ -78,19 +78,12 @@ internal class BroadPublicSearchAdapter {
             Provider("Google", "https://www.google.com/search?q=$q&num=10&hl=en"),
             Provider("Brave", "https://search.brave.com/search?q=$q"),
             Provider("Mojeek", "https://www.mojeek.com/search?q=$q&si=1"),
-            Provider("Qwant JSON", "https://api.qwant.com/v3/search/web?q=$q&count=10&locale=en_us&safesearch=0", "qwant"),
-            Provider("SearXNG · searx.be", "https://searx.be/search?q=$q&format=json", "searx"),
-            Provider("SearXNG · priv.au", "https://priv.au/search?q=$q&format=json", "searx"),
-            Provider("SearXNG · opnxng", "https://opnxng.com/search?q=$q&format=json", "searx"),
-            Provider("SearXNG · inetol", "https://search.inetol.net/search?q=$q&format=json", "searx"),
-            Provider("Startpage", "https://www.startpage.com/do/search?q=$q&cat=web"),
-            Provider("Yandex", "https://yandex.com/search/?text=$q&lr=84")
+            Provider("Startpage", "https://www.startpage.com/do/search?q=$q&cat=web")
         ) else listOf(
             Provider("DuckDuckGo Lite", "https://lite.duckduckgo.com/lite/?q=$q"),
             Provider("Bing", "https://www.bing.com/search?q=$q&count=10"),
             Provider("Ecosia", "https://www.ecosia.org/search?q=$q"),
-            Provider("SearXNG · disroot", "https://search.disroot.org/search?q=$q&format=json", "searx"),
-            Provider("SearXNG · searx.tiekoetter", "https://searx.tiekoetter.com/search?q=$q&format=json", "searx")
+            Provider("SearXNG · disroot", "https://search.disroot.org/search?q=$q&format=json", "searx")
         )
     }
 
@@ -100,12 +93,11 @@ internal class BroadPublicSearchAdapter {
             return try {
                 val results = withContext(Dispatchers.IO) {
                     when (provider.type) {
-                        "qwant" -> parseQwant(JSONObject(fetch(provider.url, 4_500, "application/json")), provider.name, limit)
-                        "searx" -> parseSearx(JSONObject(fetch(provider.url, 4_500, "application/json")), provider.name, limit)
-                        else -> parseHtml(fetch(provider.url, 4_500, "text/html,application/xhtml+xml,*/*"), provider.name, limit)
+                        "searx" -> parseSearx(fetchJson(provider.url, 8_000), provider.name, limit)
+                        else -> parseHtml(fetch(provider.url, 8_000, "text/html,application/xhtml+xml,*/*"), provider.name, limit)
                     }
                 }
-                if (results.isEmpty()) Attempt(provider.name, emptyList(), "لم يتعرف المحلل على نتائج خارجية؛ قد تكون الصفحة محجوبة أو تغير قالبها.")
+                if (results.isEmpty()) Attempt(provider.name, emptyList(), "لم تُستخرج نتائج قابلة للتحقق. قد تكون الصفحة محجوبة أو تغير قالبها؛ لا يُعد ذلك دليلاً على غياب المعلومة.")
                 else Attempt(provider.name, results, null)
             } catch (cancelled: CancellationException) {
                 throw cancelled
@@ -202,7 +194,8 @@ internal class BroadPublicSearchAdapter {
             listOf(
                 async { imageAttempt(semaphore, "Bing Images") { bingImages(query, minOf(12, limit)) } },
                 async { imageAttempt(semaphore, "SearXNG Images") { searxImages(query, minOf(10, limit)) } },
-                async { imageAttempt(semaphore, "Wikimedia Commons") { commonsImages(query, minOf(10, limit)) } }
+                async { imageAttempt(semaphore, "Wikimedia Commons") { commonsImages(query, minOf(10, limit)) } },
+                async { imageAttempt(semaphore, "Openverse") { openverseImages(query, minOf(12, limit)) } }
             ).awaitAll()
         }
         return ImageBatch(attempts.flatMap { it.results }.distinctBy { canonical(it.imageUrl ?: it.url) }.take(limit),
@@ -222,7 +215,7 @@ internal class BroadPublicSearchAdapter {
 
     private suspend fun bingImages(query: String, limit: Int): List<PublicProfileResult> = withContext(Dispatchers.IO) {
         val q = encode(query)
-        val html = fetch("https://www.bing.com/images/search?q=$q&form=HDRSC3", 4_500, "text/html")
+        val html = fetch("https://www.bing.com/images/search?q=$q&form=HDRSC3", 8_000, "text/html")
         parseBingImagesHtml(html, limit)
     }
 
@@ -246,7 +239,7 @@ internal class BroadPublicSearchAdapter {
         for (instance in listOf("https://searx.be", "https://search.disroot.org")) {
             try {
                 val q = encode(query)
-                val root = JSONObject(fetch("$instance/search?q=$q&categories=images&format=json", 4_500, "application/json"))
+                val root = fetchJson("$instance/search?q=$q&categories=images&format=json", 8_000)
                 val rows = root.optJSONArray("results") ?: JSONArray()
                 val found = buildList {
                     for (i in 0 until minOf(rows.length(), limit * 3)) {
@@ -267,7 +260,7 @@ internal class BroadPublicSearchAdapter {
         val q = encode(query)
         val bounded = limit.coerceIn(1, 12)
         val endpoint = "https://commons.wikimedia.org/w/api.php?action=query&generator=search&gsrsearch=$q&gsrnamespace=6&gsrlimit=$bounded&prop=info%7Cimageinfo&inprop=url&iiprop=url&iiurlwidth=560&format=json"
-        val root = JSONObject(fetch(endpoint, 5_500, "application/json"))
+        val root = fetchJson(endpoint, 9_000)
         val pages = root.optJSONObject("query")?.optJSONObject("pages") ?: JSONObject()
         val keys = pages.keys()
         buildList {
@@ -282,6 +275,47 @@ internal class BroadPublicSearchAdapter {
                 add(PublicProfileResult("Wikimedia Commons", title, "ملف صورة عام؛ راجع صفحة المصدر والترخيص قبل إعادة الاستخدام.", pageUrl, 72, 45, image))
             }
         }
+    }
+
+    private suspend fun openverseImages(query: String, limit: Int): List<PublicProfileResult> = withContext(Dispatchers.IO) {
+        val endpoint = "https://api.openverse.org/v1/images/?q=${encode(query)}&page_size=${limit.coerceIn(1, 20)}&mature=false"
+        val root = fetchJson(endpoint, 9_000)
+        val rows = root.optJSONArray("results") ?: JSONArray()
+        buildList {
+            for (index in 0 until minOf(rows.length(), limit)) {
+                val row = rows.optJSONObject(index) ?: continue
+                val image = row.optString("thumbnail").ifBlank { row.optString("url") }
+                    .takeIf { it.startsWith("https://") } ?: continue
+                val page = row.optString("foreign_landing_url").ifBlank { row.optString("detail_url") }
+                    .takeIf { it.startsWith("https://") } ?: continue
+                val title = clean(row.optString("title")).ifBlank { "صورة مفتوحة" }
+                val creator = clean(row.optString("creator"))
+                val license = row.optString("license").ifBlank { "غير محدد" }
+                val provider = row.optString("source").ifBlank { "Openverse" }
+                val attribution = listOf(creator, license, provider).filter { it.isNotBlank() }.joinToString(" · ")
+                add(
+                    PublicProfileResult(
+                        provider = "Openverse · $provider",
+                        title = title.take(240),
+                        description = ("وسائط مفتوحة · " + attribution).take(500),
+                        url = page,
+                        confidence = 75,
+                        relevanceScore = 62,
+                        imageUrl = image
+                    )
+                )
+            }
+        }.distinctBy { canonical(it.imageUrl ?: it.url) }
+    }
+
+    private fun fetchJson(url: String, timeout: Int): JSONObject {
+        val body = fetch(url, timeout, "application/json")
+        val trimmed = body.trimStart('\uFEFF', ' ', '\n', '\r', '\t')
+        if (!trimmed.startsWith("{")) {
+            val host = runCatching { URL(url).host }.getOrDefault("المصدر")
+            throw IllegalStateException("$host أعاد HTML أو استجابة غير JSON")
+        }
+        return JSONObject(trimmed)
     }
 
     private fun fetch(url: String, timeout: Int, accept: String): String {
@@ -312,7 +346,10 @@ internal class BroadPublicSearchAdapter {
             }.orEmpty()
             if (status !in 200..299) throw IllegalStateException("HTTP " + status + " from " + URL(url).host)
             if (body.isBlank()) throw IllegalStateException("استجابة فارغة من " + URL(url).host)
-            if (body.contains("captcha", true) && body.length < 250_000) throw IllegalStateException("أعاد المصدر صفحة CAPTCHA بدلاً من النتائج")
+            if ((body.contains("captcha", true) || body.contains("verify you are human", true) ||
+                body.contains("unusual traffic", true)) && body.length < 300_000) {
+                throw IllegalStateException("أعاد المصدر صفحة CAPTCHA/تحقق بدلاً من النتائج")
+            }
             return body
         } finally { connection.disconnect() }
     }
