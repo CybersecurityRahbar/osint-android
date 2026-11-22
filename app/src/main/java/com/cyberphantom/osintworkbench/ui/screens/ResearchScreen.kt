@@ -29,7 +29,6 @@ import androidx.compose.material.icons.filled.PersonSearch
 import androidx.compose.material.icons.filled.TravelExplore
 import androidx.compose.material.icons.filled.WarningAmber
 import androidx.compose.material3.Icon
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -388,6 +387,7 @@ fun ResearchScreen(
                                     }
                                     if (kind == IdentifierKind.USERNAME && runUsernameScan) {
                                         progressMessage = "فحص وجود المعرّف على المنصات العامة…"
+                                        progressFraction = 0.84f
                                         usernameHits = UsernameEnumerationEngine().scan(query.trim())
                                     }
                                     runCatching { persistIdentifierSearch(store, query.trim(), kind, result, fused, usernameHits) }
@@ -851,7 +851,7 @@ private fun SearchProgressPanel(
         Row(verticalAlignment = Alignment.CenterVertically) {
             MicroLabel("STAGE TRACKER", IntelColors.TextFaint)
             Spacer(Modifier.weight(1f))
-            MicroLabel("\${(progress.coerceIn(0f, 1f) * 100).toInt()}%", accent)
+            MicroLabel("${(progress.coerceIn(0f, 1f) * 100).toInt()}%", accent)
         }
         Text(message, color = IntelColors.TextDim, fontSize = 9.sp, lineHeight = 14.sp)
     }
@@ -859,6 +859,7 @@ private fun SearchProgressPanel(
 
 private fun progressFor(message: String): Float = when {
     message.contains("اكتمل") -> 1f
+    message.contains("النطاق الزمني") || message.contains("تغطية الأخبار") -> 0.12f
     message.contains("فلترة") || message.contains("ترتيب") || message.contains("تحليل") -> 0.92f
     message.contains("الناشرين") || message.contains("الخلاصات") -> 0.72f
     message.contains("المعرفة") || message.contains("المجتمعات") -> 0.52f
