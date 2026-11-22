@@ -31,6 +31,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -43,7 +44,13 @@ import androidx.compose.ui.unit.sp
 
 @Composable
 fun Hairline(modifier: Modifier = Modifier, color: Color = IntelColors.Hairline) {
-    Box(modifier.fillMaxWidth().height(1.dp).background(color))
+    Box(
+        modifier.fillMaxWidth().height(1.dp).background(
+            Brush.horizontalGradient(
+                listOf(IntelColors.SteelDark, color, IntelColors.SteelBright.copy(alpha = 0.42f), color, IntelColors.SteelDark)
+            )
+        )
+    )
 }
 
 @Composable
@@ -55,19 +62,36 @@ fun IntelPanel(
 ) {
     Surface(
         modifier = modifier.fillMaxWidth(),
-        color = IntelColors.Panel,
-        shape = RoundedCornerShape(3.dp),
-        border = BorderStroke(1.dp, IntelColors.Hairline)
-    ) {
-        Row {
-            if (accent != null) {
-                Box(Modifier.width(2.dp).heightIn(min = 40.dp).background(accent))
-            }
-            Column(
-                modifier = Modifier.weight(1f).padding(contentPadding.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
-                content = content
+        color = Color.Transparent,
+        shape = RoundedCornerShape(4.dp),
+        border = BorderStroke(
+            1.dp,
+            Brush.linearGradient(
+                listOf(IntelColors.SteelBright.copy(alpha = 0.72f), IntelColors.HairlineStrong, IntelColors.SteelDark)
             )
+        )
+    ) {
+        Box(
+            Modifier.background(
+                Brush.verticalGradient(
+                    listOf(IntelColors.PanelHigh.copy(alpha = 0.98f), IntelColors.Panel, IntelColors.PanelInset)
+                )
+            )
+        ) {
+            Row {
+                if (accent != null) {
+                    Box(
+                        Modifier.width(3.dp).heightIn(min = 40.dp).background(
+                            Brush.verticalGradient(listOf(IntelColors.SteelBright.copy(alpha = 0.85f), accent, accent.copy(alpha = 0.55f)))
+                        )
+                    )
+                }
+                Column(
+                    modifier = Modifier.weight(1f).padding(contentPadding.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                    content = content
+                )
+            }
         }
     }
 }
@@ -137,18 +161,38 @@ fun StatTile(
 ) {
     Surface(
         modifier = modifier,
-        color = IntelColors.Panel,
-        shape = RoundedCornerShape(3.dp),
-        border = BorderStroke(1.dp, IntelColors.Hairline)
+        color = Color.Transparent,
+        shape = RoundedCornerShape(4.dp),
+        border = BorderStroke(
+            1.dp,
+            Brush.linearGradient(
+                listOf(IntelColors.SteelBright.copy(alpha = 0.65f), IntelColors.HairlineStrong, IntelColors.SteelDark)
+            )
+        )
     ) {
-        Column(Modifier.padding(horizontal = 12.dp, vertical = 11.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                Box(Modifier.size(5.dp).clip(RoundedCornerShape(1.dp)).background(accent))
-                MicroLabel(label)
-            }
-            DataText(value, IntelColors.Text, size = 19, weight = FontWeight.Bold, maxLines = 1)
-            if (caption != null) {
-                Text(caption, color = IntelColors.TextFaint, fontSize = 9.sp, lineHeight = 12.sp, maxLines = 1)
+        Box(
+            Modifier.background(
+                Brush.verticalGradient(
+                    listOf(IntelColors.PanelHigh, IntelColors.Panel, IntelColors.PanelInset)
+                )
+            )
+        ) {
+            Column(
+                Modifier.padding(horizontal = 12.dp, vertical = 11.dp),
+                verticalArrangement = Arrangement.spacedBy(5.dp)
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Box(
+                        Modifier.size(5.dp).clip(RoundedCornerShape(1.dp)).background(
+                            Brush.verticalGradient(listOf(IntelColors.SteelGlow, accent))
+                        )
+                    )
+                    MicroLabel(label, IntelColors.TextDim)
+                }
+                DataText(value, IntelColors.Text, size = 19, weight = FontWeight.Bold, maxLines = 1)
+                if (caption != null) {
+                    Text(caption, color = IntelColors.TextFaint, fontSize = 9.sp, lineHeight = 12.sp, maxLines = 1)
+                }
             }
         }
     }
@@ -157,20 +201,32 @@ fun StatTile(
 @Composable
 fun Pill(text: String, color: Color = IntelColors.Signal, filled: Boolean = false) {
     Surface(
-        color = if (filled) color.copy(alpha = 0.16f) else Color.Transparent,
-        shape = RoundedCornerShape(2.dp),
-        border = BorderStroke(1.dp, color.copy(alpha = if (filled) 0.55f else 0.35f))
-    ) {
-        Text(
-            text = text,
-            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-            color = color,
-            fontSize = 9.sp,
-            fontWeight = FontWeight.SemiBold,
-            fontFamily = FontFamily.Monospace,
-            letterSpacing = 0.4.sp,
-            maxLines = 1
+        color = Color.Transparent,
+        shape = RoundedCornerShape(3.dp),
+        border = BorderStroke(
+            1.dp,
+            Brush.linearGradient(
+                listOf(color.copy(alpha = 0.72f), color.copy(alpha = 0.24f), IntelColors.SteelDark)
+            )
         )
+    ) {
+        Box(
+            Modifier.background(
+                if (filled) Brush.verticalGradient(listOf(color.copy(alpha = 0.24f), color.copy(alpha = 0.07f)))
+                else Brush.verticalGradient(listOf(IntelColors.PanelHigh.copy(alpha = 0.85f), IntelColors.PanelInset))
+            )
+        ) {
+            Text(
+                text = text,
+                modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp),
+                color = color,
+                fontSize = 9.sp,
+                fontWeight = FontWeight.SemiBold,
+                fontFamily = FontFamily.Monospace,
+                letterSpacing = 0.4.sp,
+                maxLines = 1
+            )
+        }
     }
 }
 
@@ -332,12 +388,34 @@ fun ModeChip(
     accent: Color = IntelColors.Signal
 ) {
     Surface(
-        modifier = modifier.height(32.dp).clickable(onClick = onClick),
-        color = if (selected) accent.copy(alpha = 0.13f) else Color.Transparent,
-        shape = RoundedCornerShape(2.dp),
-        border = BorderStroke(1.dp, if (selected) accent.copy(alpha = 0.6f) else IntelColors.Hairline)
+        modifier = modifier.height(33.dp).clickable(onClick = onClick),
+        color = Color.Transparent,
+        shape = RoundedCornerShape(3.dp),
+        border = if (selected) {
+            BorderStroke(
+                1.dp,
+                Brush.linearGradient(
+                    listOf(IntelColors.SteelGlow, accent, accent.copy(alpha = 0.5f), IntelColors.SteelDark)
+                )
+            )
+        } else {
+            BorderStroke(1.dp, IntelColors.Hairline)
+        }
     ) {
-        Box(Modifier.padding(horizontal = 10.dp), contentAlignment = Alignment.Center) {
+        Box(
+            Modifier
+                .background(
+                    if (selected) {
+                        Brush.verticalGradient(
+                            listOf(accent.copy(alpha = 0.23f), IntelColors.PanelHigh, accent.copy(alpha = 0.08f))
+                        )
+                    } else {
+                        Brush.verticalGradient(listOf(IntelColors.PanelHigh.copy(alpha = 0.8f), IntelColors.PanelInset))
+                    }
+                )
+                .padding(horizontal = 10.dp),
+            contentAlignment = Alignment.Center
+        ) {
             Text(
                 label,
                 color = if (selected) accent else IntelColors.TextDim,
