@@ -35,7 +35,13 @@ object SourceRegistry {
         SourceDescriptor("SearXNG", "searx.be / disroot.org", "ميتاسيرش", "JSON اختياري"),
         SourceDescriptor("DuckDuckGo Instant Answer", "api.duckduckgo.com", "ملخصات", ""),
         SourceDescriptor("GitHub API", "api.github.com", "حسابات عامة", "بلا مفتاح: سقف منخفض"),
-        SourceDescriptor("Wikidata", "wikidata.org", "كيانات مرجعية", "")
+        SourceDescriptor("Wikidata", "wikidata.org", "كيانات مرجعية", ""),
+        SourceDescriptor("Wikipedia EN/AR", "wikipedia.org", "بحث موسوعي مباشر", "عربي وإنجليزي"),
+        SourceDescriptor("Lemmy", "lemmy.world / lemmy.ml", "مجتمعات عامة مفتوحة", "منشورات عامة فقط"),
+        SourceDescriptor("Hacker News / Algolia", "hn.algolia.com", "أرشيف نقاشات عامة", "قصص ومنشورات عامة"),
+        SourceDescriptor("Stack Exchange", "api.stackexchange.com", "أسئلة وأجوبة عامة", "بحث متقدم"),
+        SourceDescriptor("OpenAlex", "api.openalex.org", "فهارس مؤلفين علميين", "مؤسسات وأعمال منشورة"),
+        SourceDescriptor("Crossref", "api.crossref.org", "فهرس منشورات علمية", "DOI ومعلومات التأليف")
     )
 
     val news = listOf(
@@ -43,7 +49,16 @@ object SourceRegistry {
         SourceDescriptor("Google News RSS", "news.google.com", "أخبار", "عربي/إنجليزي"),
         SourceDescriptor("Bing News RSS", "bing.com", "أخبار", "غير موثّق رسمياً"),
         SourceDescriptor("SearXNG News", "searx.be / disroot.org", "أخبار", "JSON"),
-        SourceDescriptor("Publisher RSS", "10 ناشرين", "أخبار", "Reuters/BBC/الجزيرة…")
+        SourceDescriptor("Publisher RSS Search", "news.google.com", "بحث موجه للناشرين", "Reuters/AP/BBC/الجزيرة وغيرها"),
+        SourceDescriptor("BBC World RSS", "feeds.bbci.co.uk", "خلاصة مباشرة", "وقت النشر والرابط"),
+        SourceDescriptor("Al Jazeera RSS", "aljazeera.com / aljazeera.net", "خلاصة مباشرة", "إنجليزي وعربي"),
+        SourceDescriptor("The Guardian RSS", "theguardian.com", "خلاصة مباشرة", "World"),
+        SourceDescriptor("DW RSS", "rss.dw.com", "خلاصة مباشرة", "إنجليزي"),
+        SourceDescriptor("France 24 RSS", "france24.com", "خلاصة مباشرة", "عربي وإنجليزي"),
+        SourceDescriptor("Sky News Arabia RSS", "skynewsarabia.com", "خلاصة مباشرة", "أخبار عربية"),
+        SourceDescriptor("Bing News RSS", "bing.com", "خلاصة أخبار", "RSS"),
+        SourceDescriptor("SearXNG News", "searx.be / disroot.org", "بحث متعدد المصادر", "JSON"),
+        SourceDescriptor("GDELT DOC API", "api.gdeltproject.org", "أخبار مؤرخة", "نطاق بحث مباشر محدود بآخر ثلاثة أشهر")
     )
 
     val images = listOf(
