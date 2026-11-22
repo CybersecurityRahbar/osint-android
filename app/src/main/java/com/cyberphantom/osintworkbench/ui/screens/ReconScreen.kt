@@ -280,13 +280,10 @@ internal fun KeyLine(key: String, value: String, valueColor: androidx.compose.ui
 
 @Composable
 private fun RecordRow(record: ReconRecord, onOpen: () -> Unit) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(IntelColors.Panel, RoundedCornerShape(2.dp))
-            .clickable(onClick = onOpen)
-            .padding(10.dp),
-        verticalArrangement = Arrangement.spacedBy(6.dp)
+    IntelPanel(
+        modifier = Modifier.clickable(onClick = onOpen),
+        accent = if (record.isRisk()) IntelColors.Amber else IntelColors.Signal,
+        contentPadding = 10
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(7.dp)) {
             Pill(reconCategory(record.kind), if (record.isRisk()) IntelColors.Amber else IntelColors.Signal)
@@ -319,7 +316,7 @@ private fun RecordRow(record: ReconRecord, onOpen: () -> Unit) {
             Icon(Icons.Filled.OpenInNew, contentDescription = "فتح المصدر", tint = IntelColors.Signal, modifier = Modifier.size(13.dp))
         }
         if (record.detail.isNotBlank()) {
-            Text(record.detail, color = IntelColors.TextFaint, fontSize = 9.sp, lineHeight = 13.sp, maxLines = 4)
+            Text(record.detail, color = IntelColors.TextDim, fontSize = 9.sp, lineHeight = 13.sp, maxLines = 4)
         }
     }
 }
