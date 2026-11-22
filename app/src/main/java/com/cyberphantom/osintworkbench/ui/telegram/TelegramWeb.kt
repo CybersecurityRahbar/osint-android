@@ -150,7 +150,8 @@ object TelegramWeb {
             }
             last = current
             val route = current.url.substringAfter('#').trimStart('@').substringBefore('?').trimEnd('/')
-            val routeMatches = route.equals(handle, ignoreCase = true)
+            // Web K may replace #@username with the resolved numeric peer id after opening.
+            val routeMatches = route.equals(handle, ignoreCase = true) || route.matches(Regex("\\d{5,20}"))
             val titleMatches = chatTitleMatches(current.title, handle, configuredName)
             if (routeMatches && titleMatches && current.hasComposer) {
                 delay(1_000L)
@@ -409,14 +410,15 @@ object TelegramWeb {
     fun chatMatches(snapshot: TelegramSnapshot, username: String, configuredName: String): Boolean {
         val handle = username.trim().removePrefix("@").lowercase()
         val route = snapshot.url.substringAfter('#').trimStart('@').substringBefore('?').lowercase()
-        val routeMatches = route == handle || route.startsWith("$handle/")
+        // The fragment starts as #@username and may become a numeric peer id after resolution.
+        val routeMatches = route == handle || route.startsWith("$handle/") || route.matches(Regex("\\d{5,20}"))
         val title = PrivateSourceTextMatcher.normalize(snapshot.title)
         val expected = PrivateSourceTextMatcher.normalize(configuredName)
         val titleMatches = expected.isNotBlank() && title.isNotBlank() &&
             (title.contains(expected) || expected.contains(title))
         val handleNormalized = PrivateSourceTextMatcher.normalize(handle)
         val handleMatchesTitle = handleNormalized.isNotBlank() && title.contains(handleNormalized)
-        return snapshot.hasComposer && (routeMatches || titleMatches || handleMatchesTitle)
+        return snapshot.hasComposer && routeMatches && (titleMatches || handleMatchesTitle)
     }
 
     private suspend fun evaluate(view: WebView, script: String): String =
