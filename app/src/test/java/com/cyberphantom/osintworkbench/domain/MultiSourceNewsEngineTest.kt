@@ -1,6 +1,7 @@
 package com.cyberphantom.osintworkbench.domain
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -133,4 +134,85 @@ class MultiSourceNewsEngineTest {
         val stories = engine.parseRss(invalid, null, "en", "US")
         assertTrue(stories.isEmpty())
     }
+
+    @Test
+    fun rssParserRetainsPublisherSummaryAndAttributionOverride() {
+        val feed = """
+            <rss version="2.0"><channel><item>
+              <title>Regional news update</title>
+              <link>https://news.example.org/story/42</link>
+              <pubDate>Sun, 22 Nov 2026 12:30:00 GMT</pubDate>
+              <description><![CDATA[Full story summary from the publisher.]]></description>
+            </item></channel></rss>
+        """.trimIndent()
+
+        val stories = engine.parseRss(
+            feed,
+            null,
+            "en",
+            "GB",
+            providerLabelOverride = "Direct RSS · Test source",
+            publisherNameOverride = "Test publisher",
+            publisherDomainOverride = "news.example.org"
+        )
+
+        assertEquals(1, stories.size)
+        assertEquals("Test publisher", stories.single().publisherName)
+        assertEquals("news.example.org", stories.single().domain)
+        assertEquals("Direct RSS · Test source", stories.single().provider)
+        assertEquals("Full story summary from the publisher.", stories.single().description)
+    }
+
+    @Test
+    fun atomFeedWithHrefLinkAndUpdatedTimestampIsParsed() {
+        val atom = """
+            <?xml version="1.0" encoding="UTF-8"?>
+            <feed xmlns="http://www.w3.org/2005/Atom">
+              <entry>
+                <title>Atom public story</title>
+                <link rel="alternate" href="https://atom.example.org/story/7" />
+                <updated>2026-11-22T09:45:00Z</updated>
+                <summary>Atom story summary</summary>
+              </entry>
+            </feed>
+        """.trimIndent()
+
+        val stories = engine.parseRss(atom, null, "en", "GB")
+        assertEquals(1, stories.size)
+        assertEquals("Atom public story", stories.single().title)
+        assertEquals("https://atom.example.org/story/7", stories.single().url)
+        assertEquals("2026-11-22T09:45:00Z", stories.single().publishedAt)
+        assertEquals("Atom story summary", stories.single().description)
+    }
+
+    @Test
+    fun timestampParserSupportsGdeltRssAndIsoDates() {
+        assertEquals(
+            java.time.Instant.parse("2026-11-22T12:30:00Z").toEpochMilli(),
+            engine.parsePublishedMillis("20261122T123000Z")
+        )
+        assertEquals(
+            java.time.Instant.parse("2026-11-22T12:30:00Z").toEpochMilli(),
+            engine.parsePublishedMillis("2026-11-22T12:30:00Z")
+        )
+        assertEquals(
+            java.time.Instant.parse("2026-11-22T12:30:00Z").toEpochMilli(),
+            engine.parsePublishedMillis("Sun, 22 Nov 2026 12:30:00 GMT")
+        )
+        assertNull(engine.parsePublishedMillis("date unknown"))
+    }
+
+    @Test
+    fun preciseTimeRangeCanBeCheckedAtBothInclusiveBoundaries() {
+        val start = java.time.Instant.parse("2026-11-22T12:00:00Z").toEpochMilli()
+        val end = java.time.Instant.parse("2026-11-22T13:00:00Z").toEpochMilli()
+        val atStart = engine.parsePublishedMillis("2026-11-22T12:00:00Z")
+        val atEnd = engine.parsePublishedMillis("2026-11-22T13:00:00Z")
+        val outside = engine.parsePublishedMillis("2026-11-22T13:00:01Z")
+
+        assertTrue(atStart!! >= start && atStart <= end)
+        assertTrue(atEnd!! >= start && atEnd <= end)
+        assertFalse(outside!! >= start && outside <= end)
+    }
+
 }
