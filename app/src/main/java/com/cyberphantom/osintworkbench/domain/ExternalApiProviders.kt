@@ -543,9 +543,11 @@ private fun detectLogicalError(provider: ApiProviderId, root: JSONObject) {
             if (root.has("success") && !root.optBoolean("success", true)) "Request failed" else ""
         }
         ApiProviderId.EXA -> root.optString("error")
-        ApiProviderId.CURRENTS -> root.optString("message").takeIf {
-            root.optString("status").equals("error", true)
-        }.orEmpty()
+        ApiProviderId.CURRENTS -> {
+            if (root.optString("status").equals("error", true)) {
+                root.optString("msg").ifBlank { root.optString("message") }
+            } else ""
+        }
         ApiProviderId.THE_NEWS_API -> root.optString("error")
         ApiProviderId.NEWSDATA -> {
             if (root.optString("status").equals("error", true)) {
