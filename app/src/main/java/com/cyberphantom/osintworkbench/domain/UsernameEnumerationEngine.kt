@@ -232,7 +232,7 @@ class UsernameEnumerationEngine {
         val escaped = Regex.escape(needle)
         val atHandle = Regex("(?i)@" + escaped + "($|[^A-Za-z0-9._-])").containsMatchIn(body)
         val structuredUsername = Regex(
-            """(?i)["'](?:username|screen_name|uniqueId|handle)["']\\s*:\\s*["']$escaped["']"""
+            """(?i)["'](?:username|screen_name|uniqueId|handle)["']\s*:\s*["']$escaped["']"""
         ).containsMatchIn(body)
         return atHandle || structuredUsername
     }

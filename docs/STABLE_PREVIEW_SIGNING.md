@@ -1,6 +1,6 @@
 # Stable preview signing — osint-android
 
-The v0.7.0 preview must use the same private signing key as the earlier `osint-web` preview channel. This preserves Android's ability to update the same installed package in place.
+The v0.8.0 preview must use the same private signing key as the earlier `osint-web` preview channel. This preserves Android's ability to update the same installed package in place.
 
 ## Verified signing identity
 
@@ -27,7 +27,7 @@ Repository settings: https://github.com/CybersecurityRahbar/osint-android/settin
 
 After both secrets are configured, open **Actions → Android CI → Run workflow**, select `main`, and run it. Download the artifact named:
 
-`osint-workbench-v0.7.0-preview-apk`
+`osint-workbench-v0.8.0-preview-apk`
 
 The downloaded artifact is a ZIP; extract and install `app-debug.apk`, not the ZIP.
 

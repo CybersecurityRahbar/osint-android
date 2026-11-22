@@ -17,8 +17,8 @@ android {
         manifestPlaceholders["appLabel"] = "OSINT Workbench"
         minSdk = 26
         targetSdk = 36
-        versionCode = 9
-        versionName = "0.7.0"
+        versionCode = 10
+        versionName = "0.8.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -42,7 +42,7 @@ android {
             if (hasStablePreviewSigning) {
                 signingConfig = signingConfigs.getByName("previewStable")
             }
-            manifestPlaceholders["appLabel"] = "OSINT Workbench Preview 0.7"
+            manifestPlaceholders["appLabel"] = "OSINT Workbench Preview 0.8"
         }
     }
 
