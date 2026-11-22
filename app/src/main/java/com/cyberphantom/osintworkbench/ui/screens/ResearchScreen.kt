@@ -1,5 +1,8 @@
 package com.cyberphantom.osintworkbench.ui.screens
 
+import android.app.DatePickerDialog
+import android.app.TimePickerDialog
+import android.os.SystemClock
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -25,6 +28,7 @@ import androidx.compose.material.icons.filled.PersonSearch
 import androidx.compose.material.icons.filled.TravelExplore
 import androidx.compose.material.icons.filled.WarningAmber
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -72,20 +76,22 @@ import com.cyberphantom.osintworkbench.ui.design.Pill
 import com.cyberphantom.osintworkbench.ui.design.SectionBar
 import com.cyberphantom.osintworkbench.ui.design.StatTile
 import com.cyberphantom.osintworkbench.ui.design.ToggleRow
-import com.cyberphantom.osintworkbench.ui.telegram.PrivateSearchPanel
-import com.cyberphantom.osintworkbench.ui.util.formatTime
 import com.cyberphantom.osintworkbench.ui.util.safeFileName
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
+import java.text.SimpleDateFormat
+import java.util.Calendar
+import java.util.Date
+import java.util.Locale
 
 private enum class ResearchMode(val label: String) {
     IDENTIFIERS("المعرّفات"),
-    NEWS("الأخبار"),
-    TELEGRAM("المصادر الخاصة")
+    NEWS("الأخبار")
 }
 
 @Composable
@@ -106,6 +112,13 @@ fun ResearchScreen(
     var runUsernameScan by rememberSaveable { mutableStateOf(true) }
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
+    var progressMessage by rememberSaveable { mutableStateOf("جاهز لبدء البحث") }
+    var operationStartedAt by remember { mutableStateOf(0L) }
+    var liveElapsedMs by remember { mutableStateOf(0L) }
+    var completedElapsedMs by remember { mutableStateOf(0L) }
+    var newsRangeEnabled by rememberSaveable { mutableStateOf(false) }
+    var newsFromMillis by rememberSaveable { mutableStateOf(System.currentTimeMillis() - 7L * 24L * 60L * 60L * 1000L) }
+    var newsToMillis by rememberSaveable { mutableStateOf(System.currentTimeMillis()) }
     var report by remember { mutableStateOf<com.cyberphantom.osintworkbench.domain.PublicWebSearchResponse?>(null) }
     var fusion by remember { mutableStateOf<FusionProfile?>(null) }
     var usernameHits by remember { mutableStateOf<List<UsernameHit>>(emptyList()) }
@@ -137,11 +150,19 @@ fun ResearchScreen(
         mode = if (startInNews) ResearchMode.NEWS else ResearchMode.IDENTIFIERS
     }
 
+    LaunchedEffect(busy, operationStartedAt) {
+        if (!busy) return@LaunchedEffect
+        while (busy) {
+            liveElapsedMs = (SystemClock.elapsedRealtime() - operationStartedAt).coerceAtLeast(0L)
+            delay(160L)
+        }
+    }
+
     ScreenColumn {
         ScreenLead(
             code = "MODULE 03 / INTEL",
             title = "البحث الاستخباراتي",
-            subtitle = "فهارس متعددة، تحليل تجميعي، أخبار، وقنوات خاصة عبر جلستك في Telegram",
+            subtitle = "فهارس عامة متعددة، تحليل تجميعي، أخبار مؤرشفة، ومصادر خاصة",
             icon = Icons.Filled.TravelExplore,
             accent = IntelColors.Violet
         )
@@ -158,8 +179,16 @@ fun ResearchScreen(
             }
         }
 
+        if (busy || completedElapsedMs > 0L) {
+            SearchProgressPanel(
+                message = progressMessage,
+                elapsedMs = if (busy) liveElapsedMs else completedElapsedMs,
+                accent = if (mode == ResearchMode.NEWS) IntelColors.Blue else IntelColors.Violet,
+                running = busy
+            )
+        }
+
         when (mode) {
-            ResearchMode.TELEGRAM -> PrivateSearchPanel(store = store, onSaved = onSaved)
             ResearchMode.NEWS -> {
                 IntelPanel(accent = IntelColors.Blue) {
                     MicroLabel("NEWS / MULTI-SOURCE", IntelColors.Blue)
@@ -169,25 +198,75 @@ fun ResearchScreen(
                         label = "كلمات البحث",
                         placeholder = "اسم، حدث، منطقة…"
                     )
+                    ToggleRow(
+                        checked = newsRangeEnabled,
+                        onCheckedChange = { enabled ->
+                            newsRangeEnabled = enabled
+                            if (enabled && newsToMillis < newsFromMillis) {
+                                newsToMillis = System.currentTimeMillis()
+                                newsFromMillis = newsToMillis - 7L * 24L * 60L * 60L * 1000L
+                            }
+                        },
+                        title = "تحديد فترة النشر",
+                        detail = "تصفية المقالات من تاريخ ووقت البداية إلى تاريخ ووقت النهاية.",
+                        accent = IntelColors.Blue
+                    )
+                    if (newsRangeEnabled) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            GhostButton(
+                                text = "من: ${formatNewsDateTime(newsFromMillis)}",
+                                onClick = {
+                                    showDateTimePicker(context, newsFromMillis) { selected -> newsFromMillis = selected }
+                                },
+                                modifier = Modifier.weight(1f),
+                                accent = IntelColors.Blue
+                            )
+                            GhostButton(
+                                text = "إلى: ${formatNewsDateTime(newsToMillis)}",
+                                onClick = {
+                                    showDateTimePicker(context, newsToMillis) { selected -> newsToMillis = selected }
+                                },
+                                modifier = Modifier.weight(1f),
+                                accent = IntelColors.Blue
+                            )
+                        }
+                        if (newsFromMillis > newsToMillis) {
+                            Text("وقت البداية يجب أن يسبق وقت النهاية.", color = IntelColors.Amber, fontSize = 9.sp)
+                        }
+                        MicroLabel("FILTER · ${formatNewsDateTime(newsFromMillis)}  →  ${formatNewsDateTime(newsToMillis)}", IntelColors.TextFaint)
+                    }
                     ActionButton(
                         text = "جمع الأخبار",
                         onClick = {
                             scope.launch {
                                 busy = true
+                                operationStartedAt = SystemClock.elapsedRealtime()
+                                liveElapsedMs = 0L
+                                completedElapsedMs = 0L
+                                progressMessage = "تهيئة مصادر الأخبار…"
                                 error = null
                                 news = null
                                 try {
-                                    val result = MultiSourceNewsEngine().search(query.trim(), 30)
+                                    val result = MultiSourceNewsEngine().search(
+                                        query = query.trim(),
+                                        maxRecords = 60,
+                                        includeImages = includeImages,
+                                        startTimeMillis = if (newsRangeEnabled) newsFromMillis else null,
+                                        endTimeMillis = if (newsRangeEnabled) newsToMillis else null,
+                                        onProgress = { message -> scope.launch { progressMessage = message } }
+                                    )
                                     news = result
-                                    runCatching {
-                                        persistNews(store, result)
-                                    }.onFailure { error = "تعذر حفظ النتائج: ${it.message}" }
+                                    progressMessage = "اكتمل جمع الأخبار وفرزها."
+                                    runCatching { persistNews(store, result) }
+                                        .onFailure { error = "تعذر حفظ النتائج: ${it.message}" }
                                     onSaved()
                                 } catch (cancelled: CancellationException) {
                                     throw cancelled
                                 } catch (exception: Exception) {
                                     error = exception.message ?: "تعذر جلب الأخبار."
+                                    progressMessage = "توقف البحث بسبب خطأ."
                                 } finally {
+                                    completedElapsedMs = (SystemClock.elapsedRealtime() - operationStartedAt).coerceAtLeast(0L)
                                     busy = false
                                 }
                             }
@@ -195,7 +274,7 @@ fun ResearchScreen(
                         modifier = Modifier.fillMaxWidth(),
                         icon = Icons.Filled.Newspaper,
                         loading = busy,
-                        enabled = query.isNotBlank(),
+                        enabled = query.isNotBlank() && (!newsRangeEnabled || newsFromMillis <= newsToMillis),
                         accent = IntelColors.Blue
                     )
                     error?.let { Text(it, color = IntelColors.Red, fontSize = 10.sp, lineHeight = 15.sp) }
@@ -205,7 +284,7 @@ fun ResearchScreen(
                     Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
                         StatTile("ARTICLES", result.articles.size.toString(), IntelColors.Blue, Modifier.weight(1f))
                         StatTile("PUBLISHERS", result.articles.map { it.publisherName.ifBlank { it.domain } }.distinct().size.toString(), IntelColors.Signal, Modifier.weight(1f))
-                        StatTile("PROVIDERS", result.articles.map { it.provider }.distinct().size.toString(), IntelColors.Violet, Modifier.weight(1f))
+                        StatTile("SOURCES", result.sourcesAttempted.toString(), IntelColors.Violet, Modifier.weight(1f))
                     }
                     result.warning?.let { NoteBlock(it, IntelColors.Amber, "SOURCE NOTE") }
                     Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
@@ -271,6 +350,10 @@ fun ResearchScreen(
                         onClick = {
                             scope.launch {
                                 busy = true
+                                operationStartedAt = SystemClock.elapsedRealtime()
+                                liveElapsedMs = 0L
+                                completedElapsedMs = 0L
+                                progressMessage = "تهيئة فهارس المعرفات…"
                                 error = null
                                 report = null
                                 fusion = null
@@ -278,7 +361,13 @@ fun ResearchScreen(
                                 phoneMeta = null
                                 try {
                                     val engine = AdvancedPublicSearchEngine()
-                                    val result = engine.search(query.trim(), kind, 30, includeImages)
+                                    val result = engine.search(
+                                        rawQuery = query.trim(),
+                                        kind = kind,
+                                        maxResults = 60,
+                                        includeImages = includeImages,
+                                        onProgress = { message -> scope.launch { progressMessage = message } }
+                                    )
                                     report = result
                                     val fused = withContext(Dispatchers.Default) { IntelFusion.analyze(query.trim(), kind, result.results) }
                                     fusion = fused
@@ -286,16 +375,20 @@ fun ResearchScreen(
                                         phoneMeta = runCatching { engine.phoneMetadata(query.trim()) }.getOrNull()
                                     }
                                     if (kind == IdentifierKind.USERNAME && runUsernameScan) {
+                                        progressMessage = "فحص وجود المعرّف على المنصات العامة…"
                                         usernameHits = UsernameEnumerationEngine().scan(query.trim())
                                     }
                                     runCatching { persistIdentifierSearch(store, query.trim(), kind, result, fused, usernameHits) }
                                         .onFailure { error = "تعذر حفظ النتائج: ${it.message}" }
+                                    progressMessage = "اكتمل التحليل ودمج النتائج."
                                     onSaved()
                                 } catch (cancelled: CancellationException) {
                                     throw cancelled
                                 } catch (exception: Exception) {
                                     error = exception.message ?: "تعذر إكمال البحث."
+                                    progressMessage = "توقف البحث بسبب خطأ."
                                 } finally {
+                                    completedElapsedMs = (SystemClock.elapsedRealtime() - operationStartedAt).coerceAtLeast(0L)
                                     busy = false
                                 }
                             }
@@ -704,4 +797,75 @@ private suspend fun persistNews(store: LocalStore, result: NewsSearchResult) = w
         records = result.articles.size,
         payloadJson = newsJson(result)
     )
+}
+
+@Composable
+private fun SearchProgressPanel(
+    message: String,
+    elapsedMs: Long,
+    accent: androidx.compose.ui.graphics.Color,
+    running: Boolean
+) {
+    IntelPanel(accent = accent, contentPadding = 11) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            MicroLabel(if (running) "LIVE SEARCH / RUNNING" else "SEARCH / COMPLETE", accent)
+            Spacer(Modifier.weight(1f))
+            MicroLabel(formatElapsed(elapsedMs), IntelColors.Text)
+        }
+        LinearProgressIndicator(
+            modifier = Modifier.fillMaxWidth(),
+            color = accent,
+            trackColor = IntelColors.HairlineStrong
+        )
+        Text(message, color = IntelColors.TextDim, fontSize = 9.sp, lineHeight = 14.sp)
+    }
+}
+
+private fun formatElapsed(milliseconds: Long): String {
+    val value = milliseconds.coerceAtLeast(0L)
+    val seconds = value / 1000L
+    val minutes = seconds / 60L
+    val remainder = seconds % 60L
+    val millis = (value % 1000L) / 100L
+    return "%02d:%02d.%d".format(Locale.US, minutes, remainder, millis)
+}
+
+private fun formatNewsDateTime(millis: Long): String =
+    SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date(millis))
+
+private fun showDateTimePicker(
+    context: android.content.Context,
+    initialMillis: Long,
+    onSelected: (Long) -> Unit
+) {
+    val current = Calendar.getInstance().apply { timeInMillis = initialMillis }
+    DatePickerDialog(
+        context,
+        { _, year, month, day ->
+            val chosen = Calendar.getInstance().apply {
+                timeInMillis = initialMillis
+                set(Calendar.YEAR, year)
+                set(Calendar.MONTH, month)
+                set(Calendar.DAY_OF_MONTH, day)
+            }
+            TimePickerDialog(
+                context,
+                { _, hour, minute ->
+                    chosen.set(Calendar.HOUR_OF_DAY, hour)
+                    chosen.set(Calendar.MINUTE, minute)
+                    chosen.set(Calendar.SECOND, 0)
+                    chosen.set(Calendar.MILLISECOND, 0)
+                    onSelected(chosen.timeInMillis)
+                },
+                current.get(Calendar.HOUR_OF_DAY),
+                current.get(Calendar.MINUTE),
+                true
+            ).show()
+        },
+        current.get(Calendar.YEAR),
+        current.get(Calendar.MONTH),
+        current.get(Calendar.DAY_OF_MONTH)
+    ).apply {
+        datePicker.maxDate = System.currentTimeMillis()
+    }.show()
 }
