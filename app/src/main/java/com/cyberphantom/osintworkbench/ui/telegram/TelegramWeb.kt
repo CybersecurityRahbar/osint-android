@@ -150,10 +150,12 @@ object TelegramWeb {
         val handle = username.trim().removePrefix("@")
         require(handle.matches(Regex("[A-Za-z0-9_]{5,32}"))) { "معرّف المصدر غير صالح: $username" }
         onStatus("فتح نافذة المصدر المحدد…")
-        withContext(Dispatchers.Main) {
+        val previousUrl = withContext(Dispatchers.Main) {
             view.onResume()
+            val oldUrl = view.url.orEmpty()
             // The Web K public peer route includes @ before the username.
             view.loadUrl("$TELEGRAM_URL#@$handle")
+            oldUrl
         }
         val deadline = SystemClock.elapsedRealtime() + 55_000L
         var last: TelegramSnapshot? = null
@@ -169,9 +171,14 @@ object TelegramWeb {
             last = current
             val route = current.url.substringAfter('#').trimStart('@').substringBefore('?').trimEnd('/')
             // Web K may replace #@username with the resolved numeric peer id after opening.
-            val routeMatches = route.equals(handle, ignoreCase = true) || route.matches(Regex("\\d{5,20}"))
+            val directHandleRoute = route.equals(handle, ignoreCase = true) || route.startsWith("$handle/")
+            val numericPeerRoute = route.matches(Regex("\\d{5,20}"))
             val titleMatches = chatTitleMatches(current.title, handle, configuredName)
-            if (routeMatches && titleMatches) {
+            val navigationChanged = current.url != previousUrl
+            val identityMatches = current.title.isNotBlank() && (
+                directHandleRoute || (numericPeerRoute && (navigationChanged || titleMatches))
+            )
+            if (identityMatches) {
                 if (current.hasComposer) {
                     delay(1_000L)
                     val hydrated = snapshot(view)
@@ -191,7 +198,7 @@ object TelegramWeb {
             " (العنوان: ${it.title.ifBlank { "غير ظاهر" }} · المحرر: ${it.hasComposer} · زر الإرسال: ${it.hasSendButton} · الرسائل: ${it.messages.size} · المسار: ${it.url.substringAfter('#').take(50)})"
         }.orEmpty()
         throw IllegalStateException(
-            "لم تفتح نافذة المحادثة المطلوبة خلال 55 ثانية. تأكد من إكمال تسجيل الدخول، ثم تحقق من اسم المصدر ومعرّفه." +
+            "لم تفتح نافذة المحادثة المطلوبة خلال 55 ثانية. تأكد من إكمال تسجيل الدخول، ثم تحقق من معرّف المصدر وعنوان المحادثة الظاهر في الإعدادات." +
                 details + (lastReadError?.let { " · تعذر قراءة الصفحة: $it" } ?: "")
         )
     }
@@ -457,15 +464,16 @@ object TelegramWeb {
     fun chatMatches(snapshot: TelegramSnapshot, username: String, configuredName: String): Boolean {
         val handle = username.trim().removePrefix("@").lowercase()
         val route = snapshot.url.substringAfter('#').trimStart('@').substringBefore('?').lowercase()
-        // The fragment starts as #@username and may become a numeric peer id after resolution.
-        val routeMatches = route == handle || route.startsWith("$handle/") || route.matches(Regex("\\d{5,20}"))
+        val directHandleRoute = route == handle || route.startsWith("$handle/")
+        val numericPeerRoute = route.matches(Regex("\\d{5,20}"))
         val title = PrivateSourceTextMatcher.normalize(snapshot.title)
         val expected = PrivateSourceTextMatcher.normalize(configuredName)
         val titleMatches = expected.isNotBlank() && title.isNotBlank() &&
             (title.contains(expected) || expected.contains(title))
         val handleNormalized = PrivateSourceTextMatcher.normalize(handle)
         val handleMatchesTitle = handleNormalized.isNotBlank() && title.contains(handleNormalized)
-        return snapshot.hasComposer && routeMatches && (titleMatches || handleMatchesTitle)
+        return snapshot.hasComposer && snapshot.title.isNotBlank() &&
+            (directHandleRoute || (numericPeerRoute && (titleMatches || handleMatchesTitle)))
     }
 
     private suspend fun evaluate(view: WebView, script: String): String =

@@ -34,7 +34,8 @@ data class PrivateSourceBot(
     val numberPrompt: String,
     val namePrompt: String,
     val numberFlow: PrivateSourceFlow = PrivateSourceFlow.COMMAND_AND_PROMPT,
-    val nameFlow: PrivateSourceFlow = PrivateSourceFlow.COMMAND_AND_PROMPT
+    val nameFlow: PrivateSourceFlow = PrivateSourceFlow.COMMAND_AND_PROMPT,
+    val chatTitle: String = ""
 ) {
     fun command(kind: PrivateSourceKind): String =
         if (kind == PrivateSourceKind.NUMBER) numberCommand else nameCommand
@@ -93,7 +94,8 @@ class PrivateSourcesStore(context: Context) {
                             numberPrompt = item.optString("numberPrompt").ifBlank { "الرجاء ارسال الرقم" },
                             namePrompt = item.optString("namePrompt").ifBlank { "الرجاء ارسال الاسم" },
                             numberFlow = PrivateSourceFlow.fromStored(item.optString("numberFlow")),
-                            nameFlow = PrivateSourceFlow.fromStored(item.optString("nameFlow"))
+                            nameFlow = PrivateSourceFlow.fromStored(item.optString("nameFlow")),
+                            chatTitle = item.optString("chatTitle").trim()
                         )
                     )
                 }
@@ -116,6 +118,7 @@ class PrivateSourcesStore(context: Context) {
                     .put("namePrompt", bot.namePrompt.trim())
                     .put("numberFlow", bot.numberFlow.name)
                     .put("nameFlow", bot.nameFlow.name)
+                    .put("chatTitle", bot.chatTitle.trim())
             )
         }
         preferences.edit().putString(KEY_BOTS, array.toString()).apply()

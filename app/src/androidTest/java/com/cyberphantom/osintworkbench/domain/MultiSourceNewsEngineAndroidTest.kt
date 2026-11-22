@@ -1,6 +1,8 @@
 package com.cyberphantom.osintworkbench.domain
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.cyberphantom.osintworkbench.ui.telegram.TelegramSnapshot
+import com.cyberphantom.osintworkbench.ui.telegram.TelegramWeb
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -73,4 +75,34 @@ class MultiSourceNewsEngineAndroidTest {
         """.trimIndent()
         assertEquals(1, engine.parseRss(feed, null, "en", "US").size)
     }
+
+    @Test
+    fun directUsernameRouteAcceptsAChatTitleDifferentFromTheFriendlySourceLabel() {
+        val snapshot = TelegramSnapshot(
+            url = "https://web.telegram.org/k/#@tellwhoobot",
+            title = "Tell Whoo",
+            hasComposer = true,
+            hasSendButton = true,
+            editorText = "",
+            readyState = "complete",
+            messages = emptyList()
+        )
+        assertTrue(TelegramWeb.chatMatches(snapshot, "tellwhoobot", "كاشف الأرقام"))
+    }
+
+    @Test
+    fun numericPeerRouteRequiresTheConfiguredVisibleChatTitle() {
+        val snapshot = TelegramSnapshot(
+            url = "https://web.telegram.org/k/#123456789",
+            title = "Tell Whoo",
+            hasComposer = true,
+            hasSendButton = true,
+            editorText = "",
+            readyState = "complete",
+            messages = emptyList()
+        )
+        assertTrue(TelegramWeb.chatMatches(snapshot, "tellwhoobot", "Tell Whoo"))
+        assertTrue(!TelegramWeb.chatMatches(snapshot, "tellwhoobot", "كاشف الأرقام"))
+    }
+
 }

@@ -185,6 +185,11 @@ fun PrivateSourcesSettings(localStore: LocalStore, onSaved: () -> Unit) {
                     MicroLabel("SOURCE CONFIGURATION", IntelColors.Violet)
                     IntelField(draft.name, { draft = draft.copy(name = it) }, "اسم المصدر")
                     IntelField(draft.username, { draft = draft.copy(username = it) }, "معرّف المصدر (بدون @)")
+                    IntelField(
+                        draft.chatTitle,
+                        { draft = draft.copy(chatTitle = it) },
+                        "عنوان المحادثة الظاهر (اختياري، عند اختلافه عن اسم المصدر)"
+                    )
                     SourceFlowSelector("طريقة البحث بالرقم", draft.numberFlow) { draft = draft.copy(numberFlow = it) }
                     IntelField(
                         draft.numberCommand,

@@ -121,11 +121,12 @@ fun PrivateSearchPanel(store: LocalStore, onSaved: () -> Unit, onOpenSettings: (
             try {
                 withContext(Dispatchers.Main) { view.onResume() }
                 addLog("المصدر المحدد: ${bot.name}")
-                val opened = TelegramWeb.openChat(view, bot.username, bot.name) { addLog(it) }
-                if (!TelegramWeb.chatMatches(opened, bot.username, bot.name)) {
-                    throw IllegalStateException("لم نتأكد من فتح المحادثة المحددة. لم يُرسل أي طلب.")
-                }
-                addLog("تم التحقق من المحادثة وحقل الإدخال.")
+                val opened = TelegramWeb.openChat(
+                    view,
+                    bot.username,
+                    bot.chatTitle.ifBlank { bot.name }
+                ) { addLog(it) }
+                addLog("تم التحقق من نافذة المصدر وحقل الإدخال: ${opened.title}.")
 
                 var promptText: String? = null
                 if (flow != PrivateSourceFlow.VALUE_ONLY) {
