@@ -38,6 +38,7 @@ import com.cyberphantom.osintworkbench.ui.design.EmptyBlock
 import com.cyberphantom.osintworkbench.ui.design.IntelColors
 import com.cyberphantom.osintworkbench.ui.design.IntelField
 import com.cyberphantom.osintworkbench.ui.design.IntelPanel
+import com.cyberphantom.osintworkbench.ui.design.Hairline
 import com.cyberphantom.osintworkbench.ui.design.MicroLabel
 import com.cyberphantom.osintworkbench.ui.design.NoteBlock
 import com.cyberphantom.osintworkbench.ui.design.SectionBar

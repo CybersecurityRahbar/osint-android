@@ -646,7 +646,7 @@ private fun NewsRow(article: NewsArticle, onOpen: () -> Unit) {
             )
         }
         Row(verticalAlignment = Alignment.CenterVertically) {
-            MicroLabel("\${article.provider} · \${article.language.ifBlank { "—" }}", IntelColors.TextFaint, Modifier.weight(1f))
+            MicroLabel("${article.provider} · ${article.language.ifBlank { "—" }}", IntelColors.TextFaint, Modifier.weight(1f))
             DataText(article.domain, IntelColors.TextFaint, size = 8, maxLines = 1)
         }
     }
