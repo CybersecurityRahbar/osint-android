@@ -49,6 +49,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.cyberphantom.osintworkbench.data.LocalStore
+import com.cyberphantom.osintworkbench.ui.telegram.PrivateSearchPanel
 import com.cyberphantom.osintworkbench.domain.AdvancedPublicSearchEngine
 import com.cyberphantom.osintworkbench.domain.IdentifierKind
 import com.cyberphantom.osintworkbench.domain.IntelFusion
@@ -91,7 +92,8 @@ import java.util.Locale
 
 private enum class ResearchMode(val label: String) {
     IDENTIFIERS("المعرّفات"),
-    NEWS("الأخبار")
+    NEWS("الأخبار"),
+    PRIVATE_SOURCES("المصادر الخاصة")
 }
 
 @Composable
@@ -99,7 +101,8 @@ fun ResearchScreen(
     store: LocalStore,
     initialQuery: String,
     startInNews: Boolean,
-    onSaved: () -> Unit
+    onSaved: () -> Unit,
+    onOpenSettings: () -> Unit
 ) {
     val context = LocalContext.current
     val uriHandler = LocalUriHandler.current
@@ -191,6 +194,11 @@ fun ResearchScreen(
         }
 
         when (mode) {
+            ResearchMode.PRIVATE_SOURCES -> PrivateSearchPanel(
+                store = store,
+                onSaved = onSaved,
+                onOpenSettings = onOpenSettings
+            )
             ResearchMode.NEWS -> {
                 IntelPanel(accent = IntelColors.Blue) {
                     MicroLabel("NEWS / MULTI-SOURCE", IntelColors.Blue)
@@ -291,7 +299,13 @@ fun ResearchScreen(
                     Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
                         StatTile("ARTICLES", result.articles.size.toString(), IntelColors.Blue, Modifier.weight(1f))
                         StatTile("PUBLISHERS", result.articles.map { it.publisherName.ifBlank { it.domain } }.distinct().size.toString(), IntelColors.Signal, Modifier.weight(1f))
-                        StatTile("SOURCES", result.sourcesAttempted.toString(), IntelColors.Violet, Modifier.weight(1f))
+                        StatTile(
+                            "RESPONDED",
+                            result.sourcesResponded.toString(),
+                            IntelColors.Violet,
+                            Modifier.weight(1f),
+                            caption = "${result.sourcesWithArticles} WITH ARTICLES"
+                        )
                     }
                     result.warning?.let { NoteBlock(it, IntelColors.Amber, "SOURCE NOTE") }
                     Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
