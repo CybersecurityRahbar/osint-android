@@ -181,7 +181,9 @@ object TelegramWeb {
                 return document.querySelector('.input-message-input[contenteditable="true"]')
                   || document.querySelector('#editable-message-text[contenteditable="true"]')
                   || document.querySelector('.chat-input [contenteditable="true"]')
-                  || document.querySelector('[contenteditable="true"]');
+                  || document.querySelector('[contenteditable="true"][data-placeholder]')
+                  || document.querySelector('div[contenteditable="true"]')
+                  || document.querySelector('textarea');
               }
               var editor = findEditor();
               if (!editor) return JSON.stringify({ok:false,error:'composer_not_found'});
@@ -210,7 +212,11 @@ object TelegramWeb {
               }
               var button = document.querySelector('.btn-send')
                 || document.querySelector('button.main-button.send')
-                || document.querySelector('.chat-input .btn-send');
+                || document.querySelector('.chat-input .btn-send')
+                || document.querySelector('button[aria-label*="Send" i]')
+                || document.querySelector('button[title*="Send" i]')
+                || document.querySelector('button[aria-label*="إرسال"]')
+                || document.querySelector('button[class*="send" i]');
               if (button && !button.disabled && button.getAttribute('aria-disabled') !== 'true') {
                 button.click();
                 return JSON.stringify({ok:true,via:'button'});
@@ -252,21 +258,51 @@ object TelegramWeb {
     suspend fun snapshot(view: WebView): TelegramSnapshot {
         val script = """
             (function() {
-              var titleNode = document.querySelector('.chat-info .peer-title')
-                || document.querySelector('.MiddleHeader .peer-title')
-                || document.querySelector('.MiddleHeader .fullName')
-                || document.querySelector('.MiddleHeader .info .title');
-              var composer = document.querySelector('.input-message-input[contenteditable="true"]')
-                || document.querySelector('#editable-message-text[contenteditable="true"]')
-                || document.querySelector('.chat-input [contenteditable="true"]');
-              var send = document.querySelector('.btn-send')
-                || document.querySelector('button.main-button.send')
-                || document.querySelector('.chat-input .btn-send');
-              var bubbles = Array.prototype.slice.call(document.querySelectorAll('.bubble:not(.service):not(.is-date)'));
-              var messages = bubbles.slice(-140).map(function(bubble, index) {
-                var node = bubble.querySelector('.message') || bubble.querySelector('.text-content') || bubble;
+              function first(selectors) {
+                for (var i = 0; i < selectors.length; i++) {
+                  var node = document.querySelector(selectors[i]);
+                  if (node) return node;
+                }
+                return null;
+              }
+              var titleNode = first([
+                '.chat-info .peer-title',
+                '.MiddleHeader .peer-title',
+                '.MiddleHeader .fullName',
+                '.MiddleHeader .info .title',
+                '[class*="middleHeader" i] [class*="title" i]',
+                '[class*="chatInfo" i] [class*="title" i]',
+                'header [class*="title" i]'
+              ]);
+              var composer = first([
+                '.input-message-input[contenteditable="true"]',
+                '#editable-message-text[contenteditable="true"]',
+                '.chat-input [contenteditable="true"]',
+                '[contenteditable="true"][data-placeholder]',
+                'div[contenteditable="true"]',
+                'textarea'
+              ]);
+              var send = first([
+                '.btn-send',
+                'button.main-button.send',
+                '.chat-input .btn-send',
+                'button[aria-label*="Send" i]',
+                'button[title*="Send" i]',
+                'button[aria-label*="إرسال"]',
+                'button[class*="send" i]'
+              ]);
+              var candidates = Array.prototype.slice.call(document.querySelectorAll(
+                '.bubble:not(.service):not(.is-date), [data-mid], [data-message-id], [id^="message-"]'
+              ));
+              var seen = {};
+              var messages = candidates.slice(-180).map(function(bubble) {
+                var node = bubble.querySelector('.message') || bubble.querySelector('.text-content')
+                  || bubble.querySelector('[class*="messageText" i]') || bubble;
                 var text = String(node.innerText || node.textContent || '').trim();
-                var outgoing = bubble.classList.contains('is-out') || bubble.classList.contains('out');
+                if (!text) return null;
+                var classes = String(bubble.className || '');
+                var outgoing = bubble.classList.contains('is-out') || bubble.classList.contains('out')
+                  || /(^|\\s)(is-out|outgoing|message-out)(\\s|$)/i.test(classes);
                 var timeNode = bubble.querySelector('time') || bubble.querySelector('[title]');
                 var timeKey = timeNode ? (timeNode.getAttribute('datetime') || timeNode.getAttribute('title') || '') : '';
                 var stableId = bubble.getAttribute('data-mid') || bubble.getAttribute('data-message-id')
@@ -275,14 +311,16 @@ object TelegramWeb {
                 var hash = 0;
                 for (var i = 0; i < seed.length; i++) hash = ((hash << 5) - hash + seed.charCodeAt(i)) | 0;
                 var key = stableId || ('msg:' + hash.toString(36));
+                if (seen[key]) return null;
+                seen[key] = true;
                 return {key:String(key), text:text, outgoing:!!outgoing};
-              }).filter(function(item) { return item.text.length > 0; });
+              }).filter(Boolean);
               return JSON.stringify({
                 url:String(location.href || ''),
                 title:String(titleNode ? (titleNode.innerText || titleNode.textContent || '') : '').trim(),
                 hasComposer:!!composer,
                 hasSendButton:!!send,
-                editorText:String(composer ? (composer.innerText || composer.textContent || '') : '').trim(),
+                editorText:String(composer ? (composer.value || composer.innerText || composer.textContent || '') : '').trim(),
                 readyState:String(document.readyState || ''),
                 messages:messages
               });
@@ -363,12 +401,15 @@ object TelegramWeb {
 
     fun chatMatches(snapshot: TelegramSnapshot, username: String, configuredName: String): Boolean {
         val handle = username.trim().removePrefix("@").lowercase()
-        if (handle.isNotBlank() && snapshot.url.lowercase().contains(handle)) return true
+        val route = snapshot.url.substringAfter('#').trimStart('@').substringBefore('?').lowercase()
+        val routeMatches = route == handle || route.startsWith("$handle/")
         val title = PrivateSourceTextMatcher.normalize(snapshot.title)
         val expected = PrivateSourceTextMatcher.normalize(configuredName)
-        if (expected.isNotBlank() && title.isNotBlank() && (title.contains(expected) || expected.contains(title))) return true
+        val titleMatches = expected.isNotBlank() && title.isNotBlank() &&
+            (title.contains(expected) || expected.contains(title))
         val handleNormalized = PrivateSourceTextMatcher.normalize(handle)
-        return handleNormalized.isNotBlank() && title.contains(handleNormalized)
+        val handleMatchesTitle = handleNormalized.isNotBlank() && title.contains(handleNormalized)
+        return snapshot.hasComposer && (routeMatches || titleMatches || handleMatchesTitle)
     }
 
     private suspend fun evaluate(view: WebView, script: String): String =
