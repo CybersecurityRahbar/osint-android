@@ -178,15 +178,29 @@ class UsernameEnumerationEngine {
             ProbeKind.BLUESKY -> !lower.contains("\"did\"")
             ProbeKind.STEAM -> !lower.contains("<steamid>")
             ProbeKind.HTML -> {
-                val negative = platform.negativeMarkers.any { marker -> body.contains(marker, ignoreCase = true) }
-                if (negative) return hit(ProbeStatus.NOT_FOUND, 70, "ظهرت بصمة صفحة غير موجودة/تسجيل دخول.")
-                if (platform.positiveMarker.isNotBlank() && body.contains(platform.positiveMarker, ignoreCase = true)) {
-                    return hit(ProbeStatus.FOUND, 80, "ظهرت بصمة الصفحة العامة للحساب.")
+                val negative = platform.negativeMarkers.any { marker ->
+                    marker.isNotBlank() && body.contains(marker, ignoreCase = true)
                 }
-                if (platform.positiveMarker.isNotBlank()) {
-                    return hit(ProbeStatus.UNKNOWN, 0, "صفحة عامة بلا بصمة مؤكدة للحساب.")
+                if (negative) {
+                    return hit(ProbeStatus.NOT_FOUND, 78, "ظهرت عبارة صريحة تفيد بأن الصفحة أو الحساب غير متاح.")
                 }
-                return hit(ProbeStatus.UNKNOWN, 0, "استجابة 200 عامة؛ لا توجد بصمة كافية لتأكيد الحساب.")
+
+                val expectedUsername = extractProfileUsername(url)
+                val bodyHasExactUsername = expectedUsername != null && containsExactProfileToken(body, expectedUsername)
+                val explicitSignature = platform.positiveMarker.isNotBlank() &&
+                    body.contains(platform.positiveMarker, ignoreCase = true)
+                val openGraphSignature = body.contains("property=\"og:title\"", ignoreCase = true) ||
+                    body.contains("name=\"twitter:title\"", ignoreCase = true) ||
+                    body.contains("profilepage", ignoreCase = true) ||
+                    body.contains("\"profile\":", ignoreCase = true)
+
+                if (bodyHasExactUsername && (explicitSignature || openGraphSignature)) {
+                    return hit(ProbeStatus.FOUND, if (explicitSignature) 82 else 74,
+                        "ظهرت بيانات ملف عام مع تطابق دقيق لاسم المستخدم.")
+                }
+                return hit(ProbeStatus.UNKNOWN, 0,
+                    if (bodyHasExactUsername) "ظهر المعرّف في الصفحة لكن دون بصمة كافية لتأكيد أنها صفحة الحساب."
+                    else "استجابة 200 لم تتضمن بصمة ملف شخصي وتطابقاً دقيقاً؛ لا تُصنف كحساب غير موجود.")
             }
         }
         return if (ambiguous) {
@@ -194,6 +208,33 @@ class UsernameEnumerationEngine {
         } else {
             hit(ProbeStatus.FOUND, 82, "المصدر أعاد هوية حساب عامة لهذا الاسم.")
         }
+    }
+
+    private fun extractProfileUsername(rawUrl: String): String? = runCatching {
+        val uri = java.net.URI(rawUrl)
+        val pathParts = uri.path.orEmpty().split('/').filter { it.isNotBlank() }
+        val candidate = when {
+            pathParts.isEmpty() -> uri.rawQuery.orEmpty()
+            pathParts.size >= 2 && pathParts[pathParts.lastIndex - 1].lowercase(Locale.ROOT) in
+                setOf("user", "users", "people", "in", "profile", "member", "members", "add") ->
+                pathParts.last()
+            else -> pathParts.last()
+        }.removePrefix("@")
+        URLDecoder.decode(candidate, StandardCharsets.UTF_8.name())
+            .takeIf { it.isNotBlank() && it != "xml=1" }
+    }.getOrNull()
+
+    private fun containsExactProfileToken(body: String, username: String): Boolean {
+        val needle = username.trim().removePrefix("@")
+        if (needle.length < 2) return false
+        val decoded = body
+            .replace("&commat;", "@", ignoreCase = true)
+            .replace("&#64;", "@")
+            .replace("&#x40;", "@")
+        val pattern = Regex(
+            "(?i)(^|[^A-Za-z0-9._-])" + Regex.escape(needle) + "($|[^A-Za-z0-9._-])"
+        )
+        return pattern.containsMatchIn(decoded)
     }
 
     private fun fetch(url: String, kind: ProbeKind): Pair<Int, String> {
