@@ -17,6 +17,11 @@ import java.net.URL
 import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
 import java.util.Locale
+import java.time.Instant
+import java.time.LocalDate
+import java.time.ZoneOffset
+import java.time.format.DateTimeFormatter
+import java.time.format.DateTimeFormatter.RFC_1123_DATE_TIME
 import javax.xml.XMLConstants
 import javax.xml.parsers.DocumentBuilderFactory
 import org.xml.sax.InputSource
@@ -44,76 +49,177 @@ class MultiSourceNewsEngine {
         Publisher("الشرق الأوسط", "aawsat.com", "ar", "SA", "SA:ar"),
         Publisher("الميادين", "almayadeen.net", "ar", "LB", "LB:ar"),
         Publisher("The New York Times", "nytimes.com", "en-US", "US", "US:en"),
-        Publisher("NPR", "npr.org", "en-US", "US", "US:en")
+        Publisher("NPR", "npr.org", "en-US", "US", "US:en"),
+        Publisher("BBC Arabic", "bbc.com", "ar", "GB", "GB:ar"),
+        Publisher("CNN Arabic", "arabic.cnn.com", "ar", "US", "US:ar"),
+        Publisher("RT Arabic", "arabic.rt.com", "ar", "RU", "RU:ar"),
+        Publisher("France 24 Arabic", "france24.com", "ar", "FR", "FR:ar"),
+        Publisher("DW Arabic", "dw.com", "ar", "DE", "DE:ar"),
+        Publisher("Independent Arabia", "independentarabia.com", "ar", "GB", "GB:ar"),
+        Publisher("AFP", "afp.com", "en-US", "FR", "FR:en"),
+        Publisher("Asharq News", "asharq.com", "ar", "SA", "SA:ar"),
+        Publisher("The National", "thenationalnews.com", "en-US", "AE", "AE:en"),
+        Publisher("Gulf News", "gulfnews.com", "en-US", "AE", "AE:en"),
+        Publisher("Erem News", "eremnews.com", "ar", "AE", "AE:ar"),
+        Publisher("Al Masry Al Youm", "almasryalyoum.com", "ar", "EG", "EG:ar"),
+        Publisher("Youm7", "youm7.com", "ar", "EG", "EG:ar")
     )
 
-    suspend fun search(query: String, maxRecords: Int = 40, includeImages: Boolean = true): NewsSearchResult = withContext(Dispatchers.IO) {
+    suspend fun search(
+        query: String,
+        maxRecords: Int = 40,
+        includeImages: Boolean = true,
+        startTimeMillis: Long? = null,
+        endTimeMillis: Long? = null,
+        onProgress: (String) -> Unit = {}
+    ): NewsSearchResult = withContext(Dispatchers.IO) {
         val clean = query.trim()
         require(clean.isNotBlank()) { "أدخل كلمات البحث عن الأخبار." }
         require(clean.length <= 180) { "عبارة البحث طويلة جداً." }
-        val limit = maxRecords.coerceIn(1, 60)
+        require((startTimeMillis == null) == (endTimeMillis == null)) {
+            "حدد بداية الفترة ونهايتها معاً."
+        }
+        if (startTimeMillis != null && endTimeMillis != null) {
+            require(startTimeMillis <= endTimeMillis) { "تاريخ البداية يجب أن يسبق تاريخ النهاية." }
+        }
+        val started = System.nanoTime()
+        val limit = maxRecords.coerceIn(1, 80)
+        val hasRange = startTimeMillis != null && endTimeMillis != null
+        val apiWindowSupported = !hasRange ||
+            startTimeMillis!! >= System.currentTimeMillis() - 89L * 24L * 60L * 60L * 1000L
+        val datedQuery = if (hasRange) {
+            val startDate = Instant.ofEpochMilli(startTimeMillis!!).atZone(ZoneOffset.UTC).toLocalDate()
+            val endDateExclusive = Instant.ofEpochMilli(endTimeMillis!!).atZone(ZoneOffset.UTC).toLocalDate().plusDays(1)
+            "$clean after:$startDate before:$endDateExclusive"
+        } else clean
 
+        onProgress(if (hasRange) "تطبيق النطاق الزمني المحدد…" else "تجميع تغطية الأخبار الحديثة…")
         var outcomes = coroutineScope {
-            val semaphore = Semaphore(4)
+            val semaphore = Semaphore(6)
             val tasks = mutableListOf<kotlinx.coroutines.Deferred<SourceOutcome>>()
-            tasks += async { runSource(semaphore, "GDELT DOC API") { queryGdelt(clean, limit, includeImages) } }
-            tasks += async {
-                runSource(semaphore, "Google News RSS · Arabic") {
-                    queryGoogleNews(clean, limit, null, includeImages, "ar", "SA", "SA:ar", "Google News RSS · Arabic")
+            if (apiWindowSupported) {
+                tasks += async {
+                    runSource(semaphore, "GDELT DOC API") {
+                        queryGdelt(clean, limit, includeImages, startTimeMillis, endTimeMillis)
+                    }
                 }
             }
             tasks += async {
-                runSource(semaphore, "Google News RSS · English") {
-                    queryGoogleNews(clean, limit, null, includeImages, "en-US", "US", "US:en", "Google News RSS · English")
+                runSource(semaphore, "Google News RSS · Arabic / Yemen") {
+                    queryGoogleNews(datedQuery, limit, null, includeImages, "ar", "YE", "YE:ar", "Google News RSS · Arabic / Yemen")
                 }
             }
-            tasks += async { runSource(semaphore, "Bing News RSS") { queryBingNews(clean, limit, includeImages) } }
-            tasks += async { runSource(semaphore, "SearXNG News") { querySearxNews(clean, limit, includeImages) } }
+            tasks += async {
+                runSource(semaphore, "Google News RSS · Arabic / Saudi Arabia") {
+                    queryGoogleNews(datedQuery, limit, null, includeImages, "ar", "SA", "SA:ar", "Google News RSS · Arabic / Saudi Arabia")
+                }
+            }
+            tasks += async {
+                runSource(semaphore, "Google News RSS · English / US") {
+                    queryGoogleNews(datedQuery, limit, null, includeImages, "en-US", "US", "US:en", "Google News RSS · English / US")
+                }
+            }
+            tasks += async {
+                runSource(semaphore, "Google News RSS · English / UK") {
+                    queryGoogleNews(datedQuery, limit, null, includeImages, "en-GB", "GB", "GB:en", "Google News RSS · English / UK")
+                }
+            }
+            tasks += async { runSource(semaphore, "Bing News RSS") { queryBingNews(datedQuery, limit, includeImages) } }
+            tasks += async { runSource(semaphore, "SearXNG News") { querySearxNews(datedQuery, limit, includeImages) } }
             tasks.awaitAll()
         }
 
-        // A partial result set (not only a fully empty one) still warrants the publisher pass:
-        // aggregated feeds can silently drop an outlet while other feeds return unrelated hits.
-        if (outcomes.sumOf { it.articles.size } < maxOf(4, limit / 3)) {
-            val fallbackNames = setOf(
-                "Reuters", "BBC News", "Al Jazeera", "الجزيرة", "The Guardian", "الشرق الأوسط"
-            )
-            val fallbacks = publishers.filter { it.name in fallbackNames }.take(5)
-            val extra = coroutineScope {
-                val semaphore = Semaphore(3)
-                fallbacks.map { publisher ->
-                    async {
-                        runSource(semaphore, "Google News RSS · " + publisher.name) {
-                            queryGoogleNews(clean, maxOf(6, limit / 2), publisher, includeImages)
-                        }
+        onProgress("توسيع البحث عبر الناشرين المستقلين…")
+        val publisherOutcomes = coroutineScope {
+            val semaphore = Semaphore(6)
+            publishers.map { publisher ->
+                async {
+                    runSource(semaphore, "Google News RSS · ${publisher.name}") {
+                        queryGoogleNews(datedQuery, maxOf(5, limit / 3), publisher, includeImages)
                     }
-                }.awaitAll()
-            }
-            outcomes = outcomes + extra
+                }
+            }.awaitAll()
         }
+        outcomes = outcomes + publisherOutcomes
 
-        val articles = outcomes.flatMap { it.articles }
+        onProgress("فلترة التواريخ وإزالة المقالات المكررة…")
+        val rawArticles = outcomes.flatMap { it.articles }
             .filter { it.title.isNotBlank() && it.url.startsWith("https://") }
-            .distinctBy {
-                it.title.lowercase(Locale.ROOT).replace(Regex("\\s+"), " ").trim() + "|" +
-                    it.publisherName.ifBlank { it.domain }.lowercase(Locale.ROOT)
+            .distinctBy { normalizeNewsUrl(it.url).lowercase(Locale.ROOT) }
+
+        var excludedUnknownDates = 0
+        var excludedOutsideRange = 0
+        val articles = if (hasRange) {
+            rawArticles.filter { article ->
+                val published = parsePublishedMillis(article.publishedAt)
+                when {
+                    published == null -> {
+                        excludedUnknownDates++
+                        false
+                    }
+                    published < startTimeMillis!! || published > endTimeMillis!! -> {
+                        excludedOutsideRange++
+                        false
+                    }
+                    else -> true
+                }
             }
+        } else rawArticles
+        val sortedArticles = articles
+            .sortedByDescending { parsePublishedMillis(it.publishedAt) ?: Long.MIN_VALUE }
             .take(limit)
 
         val failed = outcomes.filter { it.error != null }
         val emptySources = outcomes.filter { it.error == null && it.articles.isEmpty() }.map { it.source }
         val failureText = failed.take(6).joinToString(" · ") { it.source + ": " + it.error }
-        val warning = when {
-            articles.isEmpty() -> {
-                "لم تُرجع مصادر الأخبار مقالات. " +
-                    (if (failureText.isBlank()) "لم يبلغ أي مصدر عن خطأ صريح." else "أخطاء المصادر: " + failureText) +
-                    (if (emptySources.isEmpty()) "" else " مصادر استجابت دون مقالات: " + emptySources.take(5).joinToString("، "))
+        val warnings = buildList {
+            if (hasRange && !apiWindowSupported) {
+                add("نطاق GDELT للأخبار الحديثة محدود بآخر ثلاثة أشهر؛ جرى تخطي هذا المزود للفترة القديمة مع استمرار بقية المصادر.")
             }
-            failed.isNotEmpty() -> "نتائج جزئية من " + outcomes.count { it.articles.isNotEmpty() } +
-                " مصدر. تعذرت بعض المصادر: " + failureText
-            else -> null
+            if (hasRange && excludedUnknownDates > 0) {
+                add("استُبعدت $excludedUnknownDates مقالات لم يتوفر لها تاريخ نشر موثوق حتى لا تتجاوز الفترة الزمنية المطلوبة.")
+            }
+            if (hasRange && excludedOutsideRange > 0) {
+                add("استُبعدت $excludedOutsideRange مقالات خارج النطاق الزمني المحدد.")
+            }
+            if (sortedArticles.isEmpty()) {
+                add(
+                    "لم تُرجع مصادر الأخبار مقالات ضمن الفترة المحددة. " +
+                        (if (failureText.isBlank()) "تحققت المصادر دون أخطاء معلنة." else "أخطاء بعض المصادر: $failureText") +
+                        (if (emptySources.isEmpty()) "" else " مصادر استجابت دون مقالات: ${emptySources.take(6).joinToString("، ")}")
+                )
+            } else if (failed.isNotEmpty()) {
+                add("نتائج جزئية: نجح ${outcomes.count { it.articles.isNotEmpty() }} مزود وتعذر الوصول إلى بعض المصادر: $failureText")
+            }
+        }.distinct()
+
+        NewsSearchResult(
+            query = clean,
+            articles = sortedArticles,
+            warning = warnings.takeIf { it.isNotEmpty() }?.joinToString("\n"),
+            elapsedMs = ((System.nanoTime() - started) / 1_000_000L).coerceAtLeast(0L),
+            sourcesAttempted = outcomes.size
+        )
+    }
+
+    private fun parsePublishedMillis(raw: String): Long? {
+        val value = raw.trim()
+        if (value.isBlank()) return null
+        runCatching { return Instant.parse(value).toEpochMilli() }
+        runCatching { return java.time.OffsetDateTime.parse(value).toInstant().toEpochMilli() }
+        runCatching { return java.time.ZonedDateTime.parse(value, RFC_1123_DATE_TIME).toInstant().toEpochMilli() }
+        runCatching {
+            val format = DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmssX", Locale.US)
+            return format.parse(value, Instant::from).toEpochMilli()
         }
-        NewsSearchResult(clean, articles, warning)
+        runCatching {
+            val format = DateTimeFormatter.ofPattern("yyyyMMddHHmmss", Locale.US).withZone(ZoneOffset.UTC)
+            return format.parse(value, Instant::from).toEpochMilli()
+        }
+        runCatching {
+            return LocalDate.parse(value.take(10)).atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
+        }
+        return null
     }
 
     private suspend fun runSource(
@@ -135,34 +241,46 @@ class MultiSourceNewsEngine {
         }
     }
 
-    private suspend fun queryGdelt(query: String, maxRecords: Int, includeImages: Boolean): List<NewsArticle> = withContext(Dispatchers.IO) {
-        val limit = maxRecords.coerceIn(1, 50)
+    private suspend fun queryGdelt(
+        query: String,
+        maxRecords: Int,
+        includeImages: Boolean,
+        startTimeMillis: Long? = null,
+        endTimeMillis: Long? = null
+    ): List<NewsArticle> = withContext(Dispatchers.IO) {
+        val limit = maxRecords.coerceIn(1, 75)
         val cleanQuery = query.trim().replace(Regex("\\s+"), " ")
-        // GDELT requires OR groups to be parenthesized; ungrouped user text can return HTTP 200 HTML errors.
         val apiQuery = if (Regex("(?i)\\bOR\\b").containsMatchIn(cleanQuery) &&
             !cleanQuery.trim().startsWith("(")) "($cleanQuery)" else cleanQuery
-        // First query is a fast recent-news request; the fallback widens the period and lowers the cap.
-        val endpoints = listOf(
-            "https://api.gdeltproject.org/api/v2/doc/doc?query=${enc(apiQuery)}&mode=artlist&format=json&sort=datedesc&maxrecords=$limit&timespan=1week",
-            "https://api.gdeltproject.org/api/v2/doc/doc?query=${enc(apiQuery)}&mode=artlist&format=json&maxrecords=${minOf(limit, 20)}"
-        )
+        val endpoints = if (startTimeMillis != null && endTimeMillis != null) {
+            val formatter = DateTimeFormatter.ofPattern("yyyyMMddHHmmss").withZone(ZoneOffset.UTC)
+            val start = formatter.format(Instant.ofEpochMilli(startTimeMillis))
+            val end = formatter.format(Instant.ofEpochMilli(endTimeMillis))
+            listOf(
+                "https://api.gdeltproject.org/api/v2/doc/doc?query=${enc(apiQuery)}&mode=artlist&format=json&sort=datedesc&maxrecords=$limit&STARTDATETIME=$start&ENDDATETIME=$end",
+                "https://api.gdeltproject.org/api/v2/doc/doc?query=${enc(apiQuery)}&mode=artlist&format=json&sort=datedesc&maxrecords=${minOf(limit, 35)}&STARTDATETIME=$start&ENDDATETIME=$end"
+            )
+        } else {
+            listOf(
+                "https://api.gdeltproject.org/api/v2/doc/doc?query=${enc(apiQuery)}&mode=artlist&format=json&sort=datedesc&maxrecords=$limit&timespan=1week",
+                "https://api.gdeltproject.org/api/v2/doc/doc?query=${enc(apiQuery)}&mode=artlist&format=json&maxrecords=${minOf(limit, 35)}"
+            )
+        }
         var lastFailure: Exception? = null
         for ((endpointIndex, endpoint) in endpoints.withIndex()) {
             val maxAttempts = if (endpointIndex == 0) 2 else 1
             for (attempt in 0 until maxAttempts) {
                 try {
-                    val raw = getText(endpoint, 8_000, "application/json, text/plain, */*")
+                    val raw = getText(endpoint, 9_000, "application/json, text/plain, */*")
                     val root = try {
                         JSONObject(raw)
                     } catch (error: Exception) {
                         val preview = raw.replace(Regex("\\s+"), " ").take(180)
                         throw IllegalStateException("GDELT returned non-JSON data: $preview", error)
                     }
-                    // A successful JSON response clears any transient failure from an earlier variant.
                     lastFailure = null
                     val articles = parseGdeltResponse(root, includeImages)
                     if (articles.isNotEmpty()) return@withContext articles
-                    // Valid empty data is not a network error; try the simpler query variant.
                     break
                 } catch (error: Exception) {
                     lastFailure = error
@@ -170,12 +288,11 @@ class MultiSourceNewsEngine {
                     val retryable = listOf("HTTP 429", "HTTP 500", "HTTP 502", "HTTP 503", "HTTP 504", "timed out", "timeout")
                         .any { message.contains(it, ignoreCase = true) }
                     if (!retryable || attempt == maxAttempts - 1) break
-                    // Respect transient rate limits; short tight retry loops tend to worsen HTTP 429/503 responses.
-                    Thread.sleep(2_500L)
+                    kotlinx.coroutines.delay(5_200L)
                 }
             }
             if (endpointIndex == endpoints.lastIndex && lastFailure != null) {
-                throw IllegalStateException("GDELT DOC API failed after retries: " + (lastFailure?.message ?: "unknown error"), lastFailure)
+                throw IllegalStateException("GDELT DOC API failed after retries: ${lastFailure?.message ?: "unknown error"}", lastFailure)
             }
         }
         emptyList()
@@ -303,7 +420,8 @@ class MultiSourceNewsEngine {
             runCatching { setAttribute("http://javax.xml.XMLConstants/property/accessExternalSchema", "") }
         }
         val document = factory.newDocumentBuilder().parse(InputSource(StringReader(xml)))
-        val items = document.getElementsByTagName("item")
+        val rssItems = document.getElementsByTagName("item")
+        val items = if (rssItems.length == 0) document.getElementsByTagName("entry") else rssItems
         return buildList {
             for (index in 0 until items.length) {
                 val item = items.item(index) as? Element ?: continue
@@ -313,26 +431,38 @@ class MultiSourceNewsEngine {
                 var sourceName = ""
                 var sourceUrl = ""
                 var imageUrl = ""
-
                 val children = item.childNodes
                 for (childIndex in 0 until children.length) {
                     val child = children.item(childIndex) as? Element ?: continue
                     when (child.tagName.substringAfter(':').lowercase(Locale.ROOT)) {
                         "title" -> title = child.textContent.orEmpty().trim()
-                        "link" -> link = normalizeNewsUrl(child.textContent.orEmpty().trim())
-                        "pubdate" -> publishedAt = child.textContent.orEmpty().trim()
+                        "link" -> {
+                            val childLink = child.textContent.orEmpty().trim()
+                            val href = child.getAttribute("href").trim()
+                            if (link.isBlank() || child.getAttribute("rel").equals("alternate", true)) {
+                                link = normalizeNewsUrl(href.ifBlank { childLink })
+                            }
+                        }
+                        "pubdate", "published", "updated", "date" -> {
+                            if (publishedAt.isBlank()) publishedAt = child.textContent.orEmpty().trim()
+                        }
                         "source" -> {
                             sourceUrl = child.getAttribute("url").orEmpty()
                             sourceName = child.textContent.orEmpty().trim()
+                            if (sourceName.isBlank()) sourceName = child.getAttribute("title").orEmpty()
+                        }
+                        "author" -> {
+                            if (sourceName.isBlank()) {
+                                sourceName = child.getElementsByTagName("name").item(0)?.textContent.orEmpty().trim()
+                            }
                         }
                         "thumbnail", "content", "enclosure" -> {
-                            val candidate = child.getAttribute("url").orEmpty()
-                            if (imageUrl.isBlank()) imageUrl = candidate
+                            val candidate = child.getAttribute("url").ifBlank { child.getAttribute("src") }
+                            if (imageUrl.isBlank() && candidate.startsWith("https://")) imageUrl = candidate
                         }
                     }
                 }
                 if (title.isBlank() || !link.startsWith("https://")) continue
-
                 val sourceDomain = runCatching { URL(sourceUrl).host.removePrefix("www.") }.getOrDefault("")
                     .ifBlank { requestedPublisher?.domain.orEmpty() }
                 val fallbackDomain = runCatching { URL(link).host.removePrefix("www.") }.getOrDefault("")
@@ -354,7 +484,7 @@ class MultiSourceNewsEngine {
                         sourceCountry = country,
                         publisherName = actualPublisher,
                         imageUrl = imageUrl.takeIf { includeImages && it.startsWith("https://") },
-                        provider = providerLabelOverride ?: if (requestedPublisher == null) "Google News RSS" else "Google News RSS · " + requestedPublisher.name
+                        provider = providerLabelOverride ?: if (requestedPublisher == null) "News RSS" else "News RSS · " + requestedPublisher.name
                     )
                 )
             }
