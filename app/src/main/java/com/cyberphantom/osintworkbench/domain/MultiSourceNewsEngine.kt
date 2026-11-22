@@ -21,6 +21,7 @@ import java.nio.charset.StandardCharsets
 import java.util.Locale
 import java.time.Instant
 import java.time.LocalDate
+import java.time.LocalDateTime
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 import java.time.format.DateTimeFormatter.RFC_1123_DATE_TIME
@@ -258,6 +259,10 @@ class MultiSourceNewsEngine(private val appContext: Context? = null) {
         runCatching { return Instant.parse(value).toEpochMilli() }
         runCatching { return java.time.OffsetDateTime.parse(value).toInstant().toEpochMilli() }
         runCatching { return java.time.ZonedDateTime.parse(value, RFC_1123_DATE_TIME).toInstant().toEpochMilli() }
+        runCatching {
+            val format = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss", Locale.US)
+            return LocalDateTime.parse(value, format).toInstant(ZoneOffset.UTC).toEpochMilli()
+        }
         runCatching {
             val format = DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmssX", Locale.US)
             return format.parse(value, Instant::from).toEpochMilli()
