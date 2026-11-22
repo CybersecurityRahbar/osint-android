@@ -49,7 +49,9 @@ data class NewsArticle(
 data class NewsSearchResult(
     val query: String,
     val articles: List<NewsArticle>,
-    val warning: String? = null
+    val warning: String? = null,
+    val elapsedMs: Long = 0,
+    val sourcesAttempted: Int = 0
 )
 
 /**
