@@ -117,4 +117,41 @@ class BroadPublicSearchAdapterTest {
 
         assertTrue(results.isEmpty())
     }
+
+    @Test
+    fun parseJsonObjectRejectsHtmlChallengeBodiesClearly() {
+        val error = runCatching {
+            adapter.parseJsonObject("<!doctype html><html>CAPTCHA</html>", "search-index")
+        }.exceptionOrNull()
+        assertTrue(error is IllegalStateException)
+        assertTrue(error?.message.orEmpty().contains("HTML"))
+    }
+
+    @Test
+    fun parseOpenverseImagesKeepsAttributionAndLandingPage() {
+        val payload = org.json.JSONObject(
+            """
+            {
+              "results": [
+                {
+                  "title": "Old city skyline",
+                  "thumbnail": "https://images.example.org/thumb.jpg",
+                  "url": "https://images.example.org/full.jpg",
+                  "foreign_landing_url": "https://media.example.org/items/1",
+                  "creator": "Photographer One",
+                  "license": "by-sa",
+                  "source": "Example collection"
+                }
+              ]
+            }
+            """.trimIndent()
+        )
+        val results = adapter.parseOpenverseResponse(payload, 10)
+        assertEquals(1, results.size)
+        assertEquals("https://media.example.org/items/1", results.single().url)
+        assertEquals("https://images.example.org/thumb.jpg", results.single().imageUrl)
+        assertTrue(results.single().description.contains("Photographer One"))
+        assertTrue(results.single().description.contains("by-sa"))
+    }
+
 }
