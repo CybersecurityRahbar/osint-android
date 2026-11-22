@@ -280,9 +280,13 @@ internal class BroadPublicSearchAdapter {
     private suspend fun openverseImages(query: String, limit: Int): List<PublicProfileResult> = withContext(Dispatchers.IO) {
         val endpoint = "https://api.openverse.org/v1/images/?q=${encode(query)}&page_size=${limit.coerceIn(1, 20)}&mature=false"
         val root = fetchJson(endpoint, 9_000)
+        parseOpenverseResponse(root, limit)
+    }
+
+    internal fun parseOpenverseResponse(root: JSONObject, limit: Int): List<PublicProfileResult> {
         val rows = root.optJSONArray("results") ?: JSONArray()
-        buildList {
-            for (index in 0 until minOf(rows.length(), limit)) {
+        return buildList {
+            for (index in 0 until minOf(rows.length(), limit.coerceIn(1, 20))) {
                 val row = rows.optJSONObject(index) ?: continue
                 val image = row.optString("thumbnail").ifBlank { row.optString("url") }
                     .takeIf { it.startsWith("https://") } ?: continue
@@ -308,12 +312,14 @@ internal class BroadPublicSearchAdapter {
         }.distinctBy { canonical(it.imageUrl ?: it.url) }
     }
 
-    private fun fetchJson(url: String, timeout: Int): JSONObject {
-        val body = fetch(url, timeout, "application/json")
+
+    private fun fetchJson(url: String, timeout: Int): JSONObject =
+        parseJsonObject(fetch(url, timeout, "application/json"), runCatching { URL(url).host }.getOrDefault("المصدر"))
+
+    internal fun parseJsonObject(body: String, source: String = "المصدر"): JSONObject {
         val trimmed = body.trimStart('\uFEFF', ' ', '\n', '\r', '\t')
         if (!trimmed.startsWith("{")) {
-            val host = runCatching { URL(url).host }.getOrDefault("المصدر")
-            throw IllegalStateException("$host أعاد HTML أو استجابة غير JSON")
+            throw IllegalStateException("$source أعاد HTML أو استجابة غير JSON")
         }
         return JSONObject(trimmed)
     }
