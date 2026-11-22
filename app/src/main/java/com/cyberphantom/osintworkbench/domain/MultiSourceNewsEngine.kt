@@ -233,7 +233,7 @@ class MultiSourceNewsEngine {
         )
     }
 
-    private fun parsePublishedMillis(raw: String): Long? {
+    internal fun parsePublishedMillis(raw: String): Long? {
         val value = raw.trim()
         if (value.isBlank()) return null
         runCatching { return Instant.parse(value).toEpochMilli() }
