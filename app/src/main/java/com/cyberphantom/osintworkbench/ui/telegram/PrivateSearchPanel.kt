@@ -79,7 +79,7 @@ fun PrivateSearchPanel(store: LocalStore, onSaved: () -> Unit) {
     var directSend by rememberSaveable { mutableStateOf(false) }
     var saveReplies by rememberSaveable { mutableStateOf(true) }
     var busy by remember { mutableStateOf(false) }
-    var status by remember { mutableStateOf("أدخل القيمة ثم شغّل الطلب؛ سيتابع التطبيق مطالبة البوت ويجمع الرد.") }
+    var status by remember { mutableStateOf("أدخل القيمة ثم شغّل الطلب؛ سيتابع المصدر المختار ويجمع الاستجابة.") }
     var result by remember { mutableStateOf<String?>(null) }
     var log by remember { mutableStateOf(emptyList<String>()) }
     var diagnostics by remember { mutableStateOf<String?>(null) }
@@ -277,7 +277,7 @@ fun PrivateSearchPanel(store: LocalStore, onSaved: () -> Unit) {
                     checked = directSend,
                     onCheckedChange = { directSend = it },
                     title = "إرسال القيمة مباشرة",
-                    detail = "يرسل الأمر ثم القيمة دون انتظار نص مطالبة محدد. استخدمه إذا كانت صياغة مطالبة البوت غير قياسية."
+                    detail = "يرسل الأمر ثم القيمة مباشرة دون انتظار مطالبة. استخدمه فقط عندما لا يطلب المصدر قيمة منفصلة."
                 )
                 ToggleRow(
                     checked = saveReplies,
