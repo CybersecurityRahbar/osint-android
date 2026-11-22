@@ -128,27 +128,47 @@ object TelegramWeb {
         require(handle.matches(Regex("[A-Za-z0-9_]{5,32}"))) { "معرّف المصدر غير صالح: $username" }
         onStatus("فتح نافذة المصدر المحدد…")
         withContext(Dispatchers.Main) {
-            view.loadUrl("$TELEGRAM_URL#$handle")
+            view.onResume()
+            // The Web K public peer route includes @ before the username.
+            view.loadUrl("$TELEGRAM_URL#@$handle")
         }
-        val deadline = SystemClock.elapsedRealtime() + 40_000L
+        val deadline = SystemClock.elapsedRealtime() + 55_000L
         var last: TelegramSnapshot? = null
+        var lastReadError: String? = null
         while (SystemClock.elapsedRealtime() < deadline) {
-            val snapshot = snapshot(view)
-            last = snapshot
-            val routeMatches = snapshot.url.lowercase().contains(handle.lowercase())
-            if (snapshot.hasComposer && snapshot.hasSendButton && snapshot.title.isNotBlank()) {
-                // Give the message list a moment to hydrate before capturing a baseline.
-                delay(900L)
-                return snapshot(view).copy(url = if (routeMatches || snapshot.url.isNotBlank()) snapshot.url else "")
+            val current = try {
+                snapshot(view)
+            } catch (error: Exception) {
+                lastReadError = error.message
+                delay(800L)
+                continue
             }
-            delay(700L)
+            last = current
+            val route = current.url.substringAfter('#').trimStart('@').substringBefore('?').trimEnd('/')
+            val routeMatches = route.equals(handle, ignoreCase = true)
+            val titleMatches = chatTitleMatches(current.title, handle)
+            if (routeMatches && titleMatches && current.hasComposer) {
+                delay(1_000L)
+                val hydrated = snapshot(view)
+                if (hydrated.hasComposer && hydrated.title.isNotBlank()) return hydrated
+            }
+            delay(800L)
         }
         val fallback = last
-        if (fallback != null && fallback.hasComposer && fallback.hasSendButton) return fallback
+        val details = fallback?.let {
+            " (العنوان: ${it.title.ifBlank { "غير ظاهر" }} · المحرر: ${it.hasComposer} · زر الإرسال: ${it.hasSendButton} · الرسائل: ${it.messages.size} · المسار: ${it.url.substringAfter('#').take(50)})"
+        }.orEmpty()
         throw IllegalStateException(
-            "تعذر تجهيز جلسة المصدر خلال 40 ثانية. " +
-                "تأكد أن جلسة المصدر مفتوحة وأن معرّف المصدر صحيح. " +
-                (fallback?.let { " (المحرر: ${it.hasComposer} · الإرسال: ${it.hasSendButton} · الصفحة: ${it.url})" } ?: "")
+            "لم تفتح نافذة المحادثة المطلوبة خلال 55 ثانية. تأكد من إكمال تسجيل الدخول، ثم تحقق من اسم المصدر ومعرّفه." +
+                details + (lastReadError?.let { " · تعذر قراءة الصفحة: $it" } ?: "")
+        )
+    }
+
+    private fun chatTitleMatches(title: String, handle: String): Boolean {
+        val normalizedTitle = title.trim().lowercase()
+        val normalizedHandle = handle.trim().removePrefix("@").lowercase()
+        return normalizedTitle.isNotBlank() && (
+            normalizedTitle.contains(normalizedHandle) || normalizedTitle.contains("@$normalizedHandle")
         )
     }
 
