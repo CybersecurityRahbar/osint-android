@@ -24,9 +24,9 @@ internal class BroadPublicSearchAdapter {
     private data class ImageBatch(val results: List<PublicProfileResult>, val warnings: List<String>)
 
     suspend fun search(queries: List<String>, maxResults: Int, includeImages: Boolean): Outcome {
-        val terms = queries.map(String::trim).filter(String::isNotBlank).distinct().take(3)
+        val terms = queries.map(String::trim).filter(String::isNotBlank).distinct().take(4)
         if (terms.isEmpty()) return Outcome(emptyList(), listOf("لا توجد عبارة صالحة للبحث."), 0)
-        val limit = maxResults.coerceIn(5, 40)
+        val limit = maxResults.coerceIn(10, 80)
         val semaphore = Semaphore(8)
         val (attempts, images) = coroutineScope {
             val webTask = async {
@@ -35,8 +35,18 @@ internal class BroadPublicSearchAdapter {
                 }.awaitAll()
             }
             val imageTask = async {
-                if (includeImages) searchImages(terms.first(), limit, semaphore)
-                else ImageBatch(emptyList(), emptyList())
+                if (!includeImages) {
+                    ImageBatch(emptyList(), emptyList())
+                } else {
+                    val imageQueries = terms.take(2)
+                    val batches = imageQueries.map { imageQuery ->
+                        async { searchImages(imageQuery, maxOf(8, limit / imageQueries.size), semaphore) }
+                    }.awaitAll()
+                    ImageBatch(
+                        batches.flatMap { it.results }.distinctBy { canonical(it.imageUrl ?: it.url) }.take(limit),
+                        batches.flatMap { it.warnings }.distinct()
+                    )
+                }
             }
             webTask.await() to imageTask.await()
         }
@@ -52,7 +62,7 @@ internal class BroadPublicSearchAdapter {
         val webLimit = (limit - imageLimit).coerceAtLeast(1)
         val merged = (allWeb.take(webLimit) + distinctImages.take(imageLimit))
         val warnings = buildList {
-            attempts.filter { it.error != null }.take(8).forEach { add(it.name + ": " + it.error) }
+            attempts.filter { it.error != null }.take(12).forEach { add(it.name + ": " + it.error) }
             addAll(images.warnings.take(4))
             if (allWeb.isEmpty()) add("لم تُستخرج صفحات ويب من المصادر التي أمكن الوصول إليها. قد تكون المصادر محجوبة أو تغير قالبها؛ النتيجة الصفرية لا تثبت غياب المعلومات.")
             if (includeImages && images.results.isEmpty()) add("لم تُرجع مصادر الصور روابط صور قابلة للعرض في هذا البحث.")
