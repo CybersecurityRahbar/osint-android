@@ -147,7 +147,8 @@ fun WorkbenchApp() {
                     store = store,
                     initialQuery = researchSeed,
                     startInNews = researchNews,
-                    onSaved = { refresh() }
+                    onSaved = { refresh() },
+                    onOpenSettings = { tab = WorkbenchTab.SETTINGS }
                 )
                 WorkbenchTab.SETTINGS -> SettingsScreen(
                     stats = stats,
