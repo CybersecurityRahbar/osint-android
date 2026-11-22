@@ -77,7 +77,7 @@ class UsernameEnumerationEngine {
         PlatformProbe("Dribbble", "تصميم", "https://dribbble.com/%s", ProbeKind.HTML,
             negativeMarkers = listOf("Page Not Found", "404")),
         PlatformProbe("Flickr", "صور", "https://www.flickr.com/people/%s", ProbeKind.HTML,
-            negativeMarkers = listOf("Page Not Found", "sign in")),
+            negativeMarkers = listOf("Page Not Found")),
         PlatformProbe("Kaggle", "بيانات", "https://www.kaggle.com/%s", ProbeKind.HTML,
             negativeMarkers = listOf("Page Not Found", "404")),
         PlatformProbe("CodePen", "شيفرة", "https://codepen.io/%s", ProbeKind.HTML,
@@ -119,10 +119,15 @@ class UsernameEnumerationEngine {
         }
     }
 
-    private fun probe(platform: PlatformProbe, username: String): UsernameHit {
+    internal fun buildProbeUrl(platform: PlatformProbe, rawUsername: String): String {
+        val username = rawUsername.trim().removePrefix("@")
         val lookupValue = if (platform.kind == ProbeKind.BLUESKY && !username.contains('.')) "$username.bsky.social" else username
         val encoded = URLEncoder.encode(lookupValue, StandardCharsets.UTF_8.name())
-        val url = platform.urlTemplate.replace("%s", encoded)
+        return platform.urlTemplate.replace("%s", encoded)
+    }
+
+    private fun probe(platform: PlatformProbe, username: String): UsernameHit {
+        val url = buildProbeUrl(platform, username)
         val outcome = runCatching { fetch(url, platform.kind) }
         if (outcome.isFailure) {
             val error = outcome.exceptionOrNull()
