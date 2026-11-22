@@ -68,8 +68,8 @@ data class TelegramDiagnostics(
     val lastOutgoing: String
 ) {
     fun summary(): String = buildString {
-        appendLine("URL: ${snapshot.url}")
-        appendLine("TITLE: ${snapshot.title.ifBlank { "(فارغ)" }}")
+        appendLine("SESSION: ${if (snapshot.url.isBlank()) "غير متصل" else "متصل"}")
+        appendLine("WINDOW: ${if (snapshot.title.isBlank()) "غير محدد" else "محدد"}")
         appendLine("READY: ${snapshot.readyState} · COMPOSER: ${snapshot.hasComposer} · SEND: ${snapshot.hasSendButton}")
         appendLine("EDITOR: ${snapshot.editorText.ifBlank { "(فارغ)" }}")
         appendLine("MESSAGES: ${snapshot.messages.size} (in=$incoming / out=$outgoing)")
@@ -115,8 +115,8 @@ object TelegramWeb {
 
     suspend fun openChat(view: WebView, username: String, onStatus: (String) -> Unit): TelegramSnapshot {
         val handle = username.trim().removePrefix("@")
-        require(handle.matches(Regex("[A-Za-z0-9_]{5,32}"))) { "اسم مستخدم البوت غير صالح: $username" }
-        onStatus("فتح المحادثة مع @$handle…")
+        require(handle.matches(Regex("[A-Za-z0-9_]{5,32}"))) { "معرّف المصدر غير صالح: $username" }
+        onStatus("فتح نافذة المصدر المحدد…")
         withContext(Dispatchers.Main) {
             view.loadUrl("$TELEGRAM_URL#$handle")
         }
@@ -136,7 +136,7 @@ object TelegramWeb {
         val fallback = last
         if (fallback != null && fallback.hasComposer && fallback.hasSendButton) return fallback
         throw IllegalStateException(
-            "تعذر تجهيز محادثة @$handle خلال 40 ثانية. " +
+            "تعذر تجهيز جلسة المصدر خلال 40 ثانية. " +
                 "تأكد أن جلسة المصدر مفتوحة وأن معرّف المصدر صحيح. " +
                 (fallback?.let { " (المحرر: ${it.hasComposer} · الإرسال: ${it.hasSendButton} · الصفحة: ${it.url})" } ?: "")
         )
@@ -194,13 +194,13 @@ object TelegramWeb {
             })($payload)
         """.trimIndent()
         val response = runCatching { JSONObject(evaluate(view, script)) }.getOrNull()
-            ?: throw IllegalStateException("تعذر تنفيذ الإرسال داخل Telegram Web.")
+            ?: throw IllegalStateException("تعذر تنفيذ الإرسال داخل جلسة المصدر.")
         if (response.optBoolean("ok") != true) {
             throw IllegalStateException(
                 when (response.optString("error")) {
-                    "composer_not_found" -> "لم أجد حقل كتابة الرسائل. افتح Telegram وأكمل تسجيل الدخول ثم أعد المحاولة."
-                    "composer_value_mismatch" -> "رفض محرر Telegram النص (${response.optString("value")}). أعد المحاولة أو أرسل النص يدوياً."
-                    else -> "تعذر الإرسال عبر واجهة Telegram (${response.optString("error")})."
+                    "composer_not_found" -> "لم أجد حقل الإدخال. افتح الجلسة وأكمل تسجيل الدخول ثم أعد المحاولة."
+                    "composer_value_mismatch" -> "رفض حقل الإدخال النص (${response.optString("value")}). أعد المحاولة."
+                    else -> "تعذر الإرسال عبر واجهة الجلسة (${response.optString("error")})."
                 }
             )
         }
@@ -260,7 +260,7 @@ object TelegramWeb {
         """.trimIndent()
         val raw = evaluate(view, script)
         val root = runCatching { JSONObject(raw) }.getOrElse {
-            throw IllegalStateException("تعذر قراءة حالة Telegram Web: ${raw.take(120)}")
+            throw IllegalStateException("تعذر قراءة حالة جلسة المصدر: ${raw.take(120)}")
         }
         val array = root.optJSONArray("messages") ?: JSONArray()
         val messages = buildList {
