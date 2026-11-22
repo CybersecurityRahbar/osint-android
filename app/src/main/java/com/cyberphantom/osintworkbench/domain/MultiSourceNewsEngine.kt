@@ -363,7 +363,7 @@ class MultiSourceNewsEngine {
         val xml = getText(feed.url, 8_000, "application/rss+xml, application/atom+xml, application/xml, text/xml")
         val tokens = query.lowercase(Locale.ROOT)
             .split(Regex("\\s+"))
-            .map { it.trim('\\'', '"', '(', ')', ',', '.', ':', ';') }
+            .map { it.trim { ch -> ch in "\"'(),.:;" } }
             .filter { it.length >= 3 }
         parseRss(
             xml = xml,
