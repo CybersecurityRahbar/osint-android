@@ -138,13 +138,13 @@ fun PrivateSearchPanel(store: LocalStore, onSaved: () -> Unit) {
                     throw IllegalStateException("لم يظهر تأكيد إرسال الأمر في سجل المحادثة. أوقفنا التنفيذ لتجنب إرسال القيمة إلى محادثة غير مؤكدة.")
                 }
 
-                val beforeValue = TelegramWeb.snapshot(view).messages.map { it.key }.toSet()
+                val beforeValue = beforeCommand
                 var promptText: String? = null
                 if (directSend) {
                     addLog("وضع الإرسال المباشر: انتظار قصير ثم إرسال القيمة.")
                     delay(1_200L)
                 } else {
-                    addLog("انتظار مطالبة البوت بالقيمة…")
+                    addLog("انتظار مطالبة المصدر بالقيمة…")
                     val prompt = TelegramWeb.waitFor(view, 30_000L) { snapshot ->
                         snapshot.messages.any { message ->
                             !message.outgoing && message.key !in beforeValue &&
@@ -193,7 +193,7 @@ fun PrivateSearchPanel(store: LocalStore, onSaved: () -> Unit) {
                                 entityId = node,
                                 title = "رد ${bot.name}",
                                 detail = reply,
-                                source = "Telegram @${bot.username}",
+                                source = "مصدر خاص · ${bot.name}",
                                 severity = "info"
                             )
                         }
@@ -248,6 +248,7 @@ fun PrivateSearchPanel(store: LocalStore, onSaved: () -> Unit) {
                         Pill(if (kind == PrivateSourceKind.NUMBER) "بحث رقمي" else "بحث بالاسم", IntelColors.Violet)
                         MicroLabel("مصدر: " + bot.name, IntelColors.TextFaint)
                     }
+                }
                 Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
                     if (selectedBot?.numberCommand?.isNotBlank() == true) {
                         ModeChip(
@@ -386,7 +387,7 @@ fun PrivateSearchPanel(store: LocalStore, onSaved: () -> Unit) {
 }
 
 /**
- * Captures every new incoming bubble until either the reply goes quiet (2.5s) or the budget ends.
+ * Captures every new incoming bubble until either the reply goes quiet (4s, with an 8s minimum collection window) or the budget ends.
  * A prompt message is excluded so the bot's question is not mistaken for its answer.
  */
 private suspend fun collectReply(
@@ -396,6 +397,7 @@ private suspend fun collectReply(
 ): String {
     val captured = linkedMapOf<String, String>()
     var lastNewAt = 0L
+    var firstNewAt = 0L
     val deadline = android.os.SystemClock.elapsedRealtime() + 90_000L
     while (android.os.SystemClock.elapsedRealtime() < deadline) {
         val snapshot = runCatching { TelegramWeb.snapshot(view) }.getOrElse { break }
@@ -407,10 +409,12 @@ private suspend fun collectReply(
             .forEach { message ->
                 if (!captured.containsKey(message.key)) {
                     captured[message.key] = message.text.trim()
-                    lastNewAt = android.os.SystemClock.elapsedRealtime()
+                    val now = android.os.SystemClock.elapsedRealtime()
+                    if (firstNewAt == 0L) firstNewAt = now
+                    lastNewAt = now
                 }
             }
-        if (captured.isNotEmpty() && android.os.SystemClock.elapsedRealtime() - lastNewAt >= 4_000L && android.os.SystemClock.elapsedRealtime() - lastNewAt >= 8_000L) break
+        if (captured.isNotEmpty() && android.os.SystemClock.elapsedRealtime() - lastNewAt >= 4_000L && android.os.SystemClock.elapsedRealtime() - firstNewAt >= 8_000L) break
         delay(700L)
     }
     return captured.values.take(20).joinToString("\n\n").trim()
