@@ -7,6 +7,8 @@ import android.os.SystemClock
 import android.webkit.CookieManager
 import android.webkit.WebChromeClient
 import android.webkit.WebView
+import androidx.compose.runtime.State
+import androidx.compose.runtime.mutableStateOf
 import android.webkit.WebViewClient
 import com.cyberphantom.osintworkbench.data.PrivateSourceKind
 import com.cyberphantom.osintworkbench.data.PrivateSourceTextMatcher
@@ -23,6 +25,9 @@ class SessionWebView(context: Context) : WebView(context)
 
 object PrivateSessionHost {
     @Volatile private var retainedView: SessionWebView? = null
+    private val observableView = mutableStateOf<SessionWebView?>(null)
+
+    val sessionView: State<SessionWebView?> get() = observableView
 
     @Synchronized
     fun getOrCreate(context: Context): SessionWebView {
@@ -30,10 +35,11 @@ object PrivateSessionHost {
         return SessionWebView(context).also {
             TelegramWeb.configure(it)
             retainedView = it
+            observableView.value = it
         }
     }
 
-    fun peek(): SessionWebView? = retainedView
+    fun peek(): SessionWebView? = observableView.value
 
     fun attach(view: SessionWebView): SessionWebView {
         (view.parent as? ViewGroup)?.removeView(view)
@@ -61,6 +67,7 @@ object PrivateSessionHost {
         runCatching { view.removeAllViews() }
         runCatching { view.destroy() }
         retainedView = null
+        observableView.value = null
     }
 }
 
@@ -200,7 +207,7 @@ object TelegramWeb {
                 var style = window.getComputedStyle(button);
                 if (style.display === 'none' || style.visibility === 'hidden') return false;
                 var label = String(button.innerText || button.textContent || '').trim().toLowerCase();
-                return /^(start|start bot|ابدأ|بدء)$/.test(label);
+                return /^(start|start bot|ابدأ|بدء|ابدأ المحادثة|بدء المحادثة)$/.test(label);
               });
               if (!start) return 'none';
               start.click();

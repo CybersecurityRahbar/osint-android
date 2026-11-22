@@ -79,7 +79,7 @@ fun PrivateSearchPanel(store: LocalStore, onSaved: () -> Unit, onOpenSettings: (
     var result by remember { mutableStateOf<String?>(null) }
     var log by remember { mutableStateOf(emptyList<String>()) }
     var diagnostics by remember { mutableStateOf<String?>(null) }
-    val webView = remember { PrivateSessionHost.peek() }
+    val webView by PrivateSessionHost.sessionView
     val scope = rememberCoroutineScope()
     val selectedBot = bots.firstOrNull { it.id == selectedBotId }
 

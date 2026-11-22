@@ -17,7 +17,7 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 50
     env:
       PREVIEW_KEYSTORE_BASE64: ${{ secrets.PREVIEW_KEYSTORE_BASE64 }}
       PREVIEW_KEYSTORE_PASSWORD: ${{ secrets.PREVIEW_KEYSTORE_PASSWORD }}
@@ -45,6 +45,34 @@ jobs:
 
       - name: Run unit tests
         run: gradle testDebugUnitTest --stacktrace
+
+      - name: Enable KVM for Android emulator
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -e /dev/kvm ]]; then
+            echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules >/dev/null
+            sudo udevadm control --reload-rules
+            sudo udevadm trigger --name-match=kvm || true
+            if [[ -r /dev/kvm && -w /dev/kvm ]]; then
+              echo "KVM acceleration is available."
+            else
+              echo "::warning::/dev/kvm exists but is not accessible; emulator may boot slowly."
+            fi
+          else
+            echo "::warning::/dev/kvm is unavailable on this runner; emulator hardware acceleration may be unavailable."
+          fi
+
+      - name: Run Android runtime parser tests
+        uses: reactivecircus/android-emulator-runner@v2.38.0
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          emulator-boot-timeout: 600
+          disable-animations: true
+          script: gradle connectedDebugAndroidTest --stacktrace
 
       - name: Prepare stable preview signing
         if: ${{ env.PREVIEW_KEYSTORE_BASE64 != '' && env.PREVIEW_KEYSTORE_PASSWORD != '' }}

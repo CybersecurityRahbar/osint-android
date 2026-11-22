@@ -418,6 +418,9 @@ internal class BroadPublicSearchAdapter {
         }.getOrNull()
     }
 
+    private fun attr(tag: String, name: String): String? =
+        Jsoup.parseBodyFragment(tag).selectFirst("*")?.attr(name)?.takeIf { it.isNotBlank() }
+
     private fun clean(value: String): String = value
         .replace(Regex("(?is)<script\\b.*?</script>"), " ")
         .replace(Regex("(?is)<style\\b.*?</style>"), " ")
