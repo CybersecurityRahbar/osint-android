@@ -52,7 +52,10 @@ data class NewsSearchResult(
     val articles: List<NewsArticle>,
     val warning: String? = null,
     val elapsedMs: Long = 0,
-    val sourcesAttempted: Int = 0
+    val sourcesAttempted: Int = 0,
+    val sourcesResponded: Int = 0,
+    val sourcesWithArticles: Int = 0,
+    val sourcesFailed: Int = 0
 )
 
 /**
