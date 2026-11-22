@@ -1073,3 +1073,11 @@
 - تم تحديث الإصدار في app/build.gradle.kts إلى versionCode=10 وversionName=0.8.0. بقي applicationId=com.cyberphantom.osintworkbench.preview051 وalias osint-preview ومادة التوقيع نفسها؛ لا تغيرها حتى يظل التثبيت تحديثاً فوق النسخة المثبتة.
 - الإصدار المرشح v0.8.0 موجود في commit 086e4aadc7d81ffdd8bb1da927cf5295055efc41، وGitHub Actions run #88 ID 45066327845 جارٍ وقت إضافة هذا السجل. لم يتم تأكيد artifact v0.8.0 بعد؛ أضف نتيجة البناء وبصمة ZIP/APK بعد انتهاء run.
 - هذه الاختبارات الآلية لا تسجل دخولاً إلى حساب المستخدم ولا تختبر جميع محركات البحث العامة على مزود الإنترنت الخاص به. جلسة المصدر الفعلية والتمرير وتلقي الرد من كل مصدر خاص تحتاج اختباراً على الهاتف بعد تثبيت النسخة النهائية؛ لا يُدّعى أنها تحققت قبل ذلك.
+
+### نتيجة الإصدار v0.8.0 النهائية — مؤكدة
+- اكتمل GitHub Actions Run #88، ID 45066327845، على commit الإصدار 086e4aadc7d81ffdd8bb1da927cf5295055efc41، بنتيجة success.
+- نجحت جميع خطوات البناء: Run unit tests، Enable KVM، Run Android runtime parser tests، Prepare stable preview signing، Build debug APK، Upload stable-signed preview APK. اختبار Android 15 الفعلي لـ RSS/Atom نجح، وليس فقط اختبار JVM.
+- Artifact: osint-workbench-v0.8.0-preview-apk، ID 14771850827، الحجم 19,949,722 بايت. بصمة SHA-256 للـ ZIP: dfa79b164afe92e74d6fa9e03f3a9febae94784778e47c950a1f94003e5814ec. رابط GitHub Actions: https://github.com/CybersecurityRahbar/osint-android/actions/runs/45066327845. تاريخ انتهاء الاحتفاظ بالـ artifact: 2026-12-06T20:29:02Z.
+- تم تنزيل ZIP وفحصه محلياً: unzip -t أظهر No errors detected. APK المستخرج app-debug.apk حجمه 20,597,153 بايت، SHA-256: 9ea6ee1be8c28303922c9ce3e90773a5b717cddedeaead05ea2fe23596a69c62.
+- تم تحليل APK Signing Block والتحقق من شهادة التوقيع: SHA-256 للشهادة A2:0C:31:09:17:45:EA:92:F8:BF:A3:57:07:FA:13:A6:5D:5F:AB:6D:7C:4A:C8:3D:A7:F6:8C:DE:A5:3B:4E:78، مطابقة تماماً لشهادة osint-preview السابقة في v0.7.0. بقي applicationId كما هو com.cyberphantom.osintworkbench.preview051، وارتفع versionCode إلى 10 وversionName إلى 0.8.0؛ يفترض أن يقبل Android النسخة كتحديث فوق v0.7.0 دون حذف التطبيق أو بياناته.
+- بقيت اختبارات الهاتف الفعلية غير منفذة من بيئة CI: لم نسجل الدخول إلى جلسة المستخدم، ولم نختبر كل مصدر خاص أو استجابة محركات البحث من شبكة الهاتف. نجاح CI يثبت سلامة الاختبارات والبناء والتوقيع وفحص RSS/Atom على Android، وليس تغطية حية كاملة لكل مزود.
