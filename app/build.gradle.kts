@@ -17,8 +17,8 @@ android {
         manifestPlaceholders["appLabel"] = "OSINT Workbench"
         minSdk = 26
         targetSdk = 36
-        versionCode = 8
-        versionName = "0.6.0"
+        versionCode = 9
+        versionName = "0.7.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -34,7 +34,7 @@ android {
 
     // Preview releases all use this same package ID and stable signing key.
     // The previous .preview050 test build used a temporary CI key, so .preview051
-    // is a one-time side-by-side transition; v0.6.0+ builds update in place.
+    // is a one-time side-by-side transition; v0.7.0+ builds update in place.
     buildTypes {
         getByName("debug") {
             applicationIdSuffix = ".preview051"
@@ -42,7 +42,7 @@ android {
             if (hasStablePreviewSigning) {
                 signingConfig = signingConfigs.getByName("previewStable")
             }
-            manifestPlaceholders["appLabel"] = "OSINT Workbench Preview 0.6"
+            manifestPlaceholders["appLabel"] = "OSINT Workbench Preview 0.7"
         }
     }
 

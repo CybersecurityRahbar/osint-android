@@ -2,17 +2,18 @@
 
 **OSINT Workbench** is an offline-first Android OSINT workbench for collecting publicly available information, preserving evidence, and building explainable technical relationships without a private backend or a bundled large language model.
 
-> **Prototype status: v0.6.0-preview.** It is an actively developed prototype, not a complete replacement for SpiderFoot, Maltego, or a dedicated vulnerability scanner.
+> **Prototype status: v0.7.0-preview.** It is an actively developed prototype, not a complete replacement for SpiderFoot, Maltego, or a dedicated vulnerability scanner.
 
-## What changed in 0.6.0
+## What changed in 0.7.0
 
-- **Signal-room interface.** The whole UI was rebuilt around an intelligence-console language: near-black graphite surfaces, hairline structure, a single analytical accent (signal teal), monospace data, six modules (OPS, RECON, GRAPH, CASE, INTEL, SYS), a live UTC clock and a per-record confidence meter. Presentation only — no data or permission claims were added.
+- **Brushed-steel interface.** The dark graphite console now uses polished steel gradients and bevel-like borders, brighter legible text, metallic dividers, and functional cyan, violet, blue, green and amber accents. Home evidence, research results, reconnaissance records, case cards, statistics and mode controls share the same visual language.
 - **Email authentication posture.** SPF, DMARC and eight common DKIM selectors are inspected over public DNS, with explicit "not observed" records and risk notes for `+all`, `p= none`, lookup-limit overruns and missing records.
 - **Archive.org catalogue search** in addition to Wayback CDX: archived texts and media related to the domain, each with its source URL.
 - **Username enumeration across ~30 platforms** (code hosts, social, package registries, identity and media). Each platform is classified as found, absent, blocked or unknown from an explicit positive/negative signature; HTTP 200 alone never counts as an account.
-- **Curated dork catalogue** (social, code, paste, documents, leaks, configs, archive, people, forums) folded into identifier search with a bounded query budget.
+- **Expanded public-source discovery.** Search combines up to six query variants per run with dorks for social sites, Reddit-indexed pages, code hosts, public forums, documents, paste indexes and archives. Additional open indexes include Arabic/English Wikipedia, Lemmy communities, Hacker News, Stack Exchange, OpenAlex, Crossref, GitHub public users and Wikidata. Public-source failures are isolated and attributed.
+- **Elapsed-time and staged progress monitor.** Identifier and news runs display a live elapsed clock, a segmented progress track, stage status, and completed source/result counts.
 - **Deterministic fusion pass** over every result set: extracted e-mails, phones, handles, domains, IPs and wallet strings, leak/breach keyword alerts, country hints and a transparent confidence score. It never asserts identity.
-- **Telegram bot automation rewritten.** The WebView is now a visible, correctly sized session; messages are inserted with several composer fallbacks, sent via the send button or a synthesized Enter, and the flow waits for the outgoing echo, the bot's value prompt and then the reply until it goes quiet. A tolerant prompt matcher, an explicit direct-send mode, a step log and a live DOM diagnostic make failures explainable instead of silent.
+- **Private-source execution hardened.** The session and automatic lookup workflow now live under Settings → Private Sources. Requests require confirmation that the selected conversation is open, the outgoing command and value are visible in the message history, and the configured prompt matches before the value is sent. Replies are correlated against messages observed after the request; the flow waits for a longer response window and reports a clear failure instead of claiming that an emptied composer proves delivery. The embedded session view also has improved nested scrolling.
 - **Backups keep full context.** Exported entities now store the complete contextual kind (for example `HTTP_STATUS@example.com`), so restoring a backup no longer merges properties of different targets. Cases and scans can be deleted individually, and a confirmed local erase is available.
 
 ## Domain intelligence
@@ -47,12 +48,13 @@
 
 ## Multi-source news
 
-- Concurrent, bounded search through GDELT DOC API, Arabic/Saudi and English/US Google News RSS editions, Bing News RSS, and SearXNG News JSON. If those feeds all return no stories, the engine makes a smaller publisher-scoped Google News fallback across 16 outlets including Reuters, BBC, Al Jazeera Arabic, Al Arabiya, Sky News Arabia, Al Hurra, Asharq Al-Awsat, Al Mayadeen, The New York Times and NPR; the fallback also runs when the aggregated feeds return only a thin result set.
-- GDELT requests retry a small number of transient failures and report non-JSON/HTTP diagnostics rather than silently discarding the API error page.
-- Each article retains a publisher label, source domain, click-through URL, publication date when provided, language/country metadata, and an image URL when the source provides one.
-- Source failures are isolated; the screen can show partial results plus a warning naming failed or empty sources. Bing News RSS is an undocumented best-effort feed and may change without notice.
-- A global image-results toggle hides or shows result/news thumbnails and disables image URL collection when off.
-- No news provider guarantees comprehensive coverage, and image availability varies by feed.
+- Concurrent collection combines GDELT DOC API, regional Google News RSS editions, Bing News RSS, SearXNG News, and direct publisher feeds from BBC World, Al Jazeera Arabic and English, The Guardian, DW, France 24 Arabic and English, and Sky News Arabia.
+- Publisher-scoped Google News RSS searches broaden coverage across additional outlets such as Reuters, AP, BBC, Al Jazeera, Al Arabiya, Asharq, Sky News Arabia, Al Hurra, Al Mayadeen, The New York Times and NPR. These are indexed publisher searches, not claims that every publisher exposes a direct RSS feed.
+- Each article displays its publisher, source domain, article link, publication timestamp, language, publisher summary when provided, and preview image when available. Duplicate article URLs are removed before display.
+- A custom date/time window lets the user choose year, month, day, hour and minute for both the start and end. Results with known timestamps are filtered against the exact requested interval; records with unknown publication dates are excluded from a constrained query rather than silently included.
+- GDELT's DOC API is used for precise timestamp windows only within its recent searchable window (approximately three months). Older intervals continue through other date-capable search feeds and are clearly marked when GDELT is skipped.
+- Each source is queried independently with bounded concurrency and timeouts. Failures and empty responses are visible; a single failing publisher does not abort the remaining sources.
+- The news results can contain partial or no records when feeds are blocked, rate-limited, unavailable, or contain no matching stories. A zero-result search is not proof that no article exists.
 
 ## Evidence and local intelligence
 
@@ -70,7 +72,7 @@
 - Live collection needs network access. Carrier, country, DNS, source, and rate-limit restrictions may still cause empty results.
 - Automatic identifier lookup is based on public indexes and permitted public APIs, not on a universal, authoritative phone-owner database. A zero-result response does not prove that information does not exist.
 - The app's SQLite database **is not encrypted at rest yet**; avoid storing highly sensitive data in the prototype.
-- GitHub Actions builds the **v0.6.0 stable-signed preview channel** with application ID `com.cyberphantom.osintworkbench.preview051`. Future preview builds keep this same application ID and signing certificate, allowing Android to update the app in place without clearing its WebView session or local app data. The older `.preview050` prototype used a temporary CI key, so this first transition is intentionally installed side-by-side; keep that older app until the new one is verified and any local data has been exported/imported. Configure the two GitHub Actions secrets `PREVIEW_KEYSTORE_BASE64` and `PREVIEW_KEYSTORE_PASSWORD` as documented in [Stable preview signing](docs/STABLE_PREVIEW_SIGNING.md). CI does not publish an APK artifact until stable signing is configured. The downloadable artifact is a ZIP containing `app-debug.apk`; install the APK, not the ZIP itself.
+- GitHub Actions builds the **v0.7.0 stable-signed preview channel** with application ID `com.cyberphantom.osintworkbench.preview051`. Future preview builds keep this same application ID and signing certificate, allowing Android to update the app in place without clearing its WebView session or local app data. The older `.preview050` prototype used a temporary CI key, so this first transition is intentionally installed side-by-side; keep that older app until the new one is verified and any local data has been exported/imported. Configure the two GitHub Actions secrets `PREVIEW_KEYSTORE_BASE64` and `PREVIEW_KEYSTORE_PASSWORD` as documented in [Stable preview signing](docs/STABLE_PREVIEW_SIGNING.md). CI does not publish an APK artifact until stable signing is configured. The downloadable artifact is a ZIP containing `app-debug.apk`; install the APK, not the ZIP itself.
 - CI verifies compilation/tests and APK packaging; it does not validate each source's live response on every carrier or phone.
 
 ## Search-engine reference
@@ -88,7 +90,7 @@ Requirements: JDK 17 and Android SDK API 36. The Gradle Wrapper downloads the pi
 
 APK output: `app/build/outputs/apk/debug/app-debug.apk`
 
-GitHub Actions runs unit tests and builds the preview APK. It uploads `osint-workbench-v0.6.0-preview-apk` only when the stable signing secrets are configured; otherwise it deliberately publishes no installable artifact.
+GitHub Actions runs unit tests and builds the preview APK. It uploads `osint-workbench-v0.7.0-preview-apk` only when the stable signing secrets are configured; otherwise it deliberately publishes no installable artifact.
 
 ## Cumulative context
 
