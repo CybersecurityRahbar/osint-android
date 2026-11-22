@@ -197,7 +197,7 @@ fun PrivateSearchPanel(store: LocalStore, onSaved: () -> Unit, onOpenSettings: (
                     withContext(Dispatchers.IO) {
                         val node = store.upsertEntity(
                             value = value,
-                            kind = "PRIVATE_SOURCE_LOOKUP@@" + bot.id,
+                            kind = "PRIVATE_SOURCE_LOOKUP@" + bot.id,
                             source = "مصدر خاص · ${bot.name}",
                             confidence = 55
                         )
