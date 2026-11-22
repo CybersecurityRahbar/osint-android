@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -113,6 +114,7 @@ fun ResearchScreen(
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var progressMessage by rememberSaveable { mutableStateOf("جاهز لبدء البحث") }
+    var progressFraction by remember { mutableStateOf(0.02f) }
     var operationStartedAt by remember { mutableStateOf(0L) }
     var liveElapsedMs by remember { mutableStateOf(0L) }
     var completedElapsedMs by remember { mutableStateOf(0L) }
@@ -182,6 +184,7 @@ fun ResearchScreen(
         if (busy || completedElapsedMs > 0L) {
             SearchProgressPanel(
                 message = progressMessage,
+                progress = progressFraction,
                 elapsedMs = if (busy) liveElapsedMs else completedElapsedMs,
                 accent = if (mode == ResearchMode.NEWS) IntelColors.Blue else IntelColors.Violet,
                 running = busy
@@ -244,6 +247,7 @@ fun ResearchScreen(
                                 liveElapsedMs = 0L
                                 completedElapsedMs = 0L
                                 progressMessage = "تهيئة مصادر الأخبار…"
+                                progressFraction = 0.04f
                                 error = null
                                 news = null
                                 try {
@@ -253,10 +257,14 @@ fun ResearchScreen(
                                         includeImages = includeImages,
                                         startTimeMillis = if (newsRangeEnabled) newsFromMillis else null,
                                         endTimeMillis = if (newsRangeEnabled) newsToMillis else null,
-                                        onProgress = { message -> scope.launch { progressMessage = message } }
+                                        onProgress = { message -> scope.launch {
+                                            progressMessage = message
+                                            progressFraction = progressFor(message)
+                                        } }
                                     )
                                     news = result
                                     progressMessage = "اكتمل جمع الأخبار وفرزها."
+                                    progressFraction = 1f
                                     runCatching { persistNews(store, result) }
                                         .onFailure { error = "تعذر حفظ النتائج: ${it.message}" }
                                     onSaved()
@@ -354,6 +362,7 @@ fun ResearchScreen(
                                 liveElapsedMs = 0L
                                 completedElapsedMs = 0L
                                 progressMessage = "تهيئة فهارس المعرفات…"
+                                progressFraction = 0.04f
                                 error = null
                                 report = null
                                 fusion = null
@@ -366,7 +375,10 @@ fun ResearchScreen(
                                         kind = kind,
                                         maxResults = 60,
                                         includeImages = includeImages,
-                                        onProgress = { message -> scope.launch { progressMessage = message } }
+                                        onProgress = { message -> scope.launch {
+                                            progressMessage = message
+                                            progressFraction = progressFor(message)
+                                        } }
                                     )
                                     report = result
                                     val fused = withContext(Dispatchers.Default) { IntelFusion.analyze(query.trim(), kind, result.results) }
@@ -381,6 +393,7 @@ fun ResearchScreen(
                                     runCatching { persistIdentifierSearch(store, query.trim(), kind, result, fused, usernameHits) }
                                         .onFailure { error = "تعذر حفظ النتائج: ${it.message}" }
                                     progressMessage = "اكتمل التحليل ودمج النتائج."
+                                    progressFraction = 1f
                                     onSaved()
                                 } catch (cancelled: CancellationException) {
                                     throw cancelled
@@ -603,20 +616,27 @@ private fun ResultRow(result: PublicProfileResult, onOpen: () -> Unit) {
 
 @Composable
 private fun NewsRow(article: NewsArticle, onOpen: () -> Unit) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(IntelColors.Panel, RoundedCornerShape(2.dp))
-            .clickable(onClick = onOpen)
-            .padding(10.dp),
-        verticalArrangement = Arrangement.spacedBy(6.dp)
+    IntelPanel(
+        modifier = Modifier.clickable(onClick = onOpen),
+        accent = IntelColors.Blue,
+        contentPadding = 10
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             Pill(article.publisherName.ifBlank { article.domain }, IntelColors.Blue)
             Spacer(Modifier.weight(1f))
-            MicroLabel(article.publishedAt.take(16), IntelColors.TextFaint)
+            MicroLabel(formatPublishedDate(article.publishedAt), IntelColors.TextFaint)
         }
         Text(article.title, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = IntelColors.Text, lineHeight = 17.sp)
+        if (article.description.isNotBlank()) {
+            Text(
+                article.description,
+                color = IntelColors.TextDim,
+                fontSize = 9.sp,
+                lineHeight = 14.sp,
+                maxLines = 4,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
         if (!article.imageUrl.isNullOrBlank()) {
             AsyncImage(
                 model = article.imageUrl,
@@ -626,7 +646,7 @@ private fun NewsRow(article: NewsArticle, onOpen: () -> Unit) {
             )
         }
         Row(verticalAlignment = Alignment.CenterVertically) {
-            MicroLabel("${article.provider} · ${article.language.ifBlank { "—" }}", IntelColors.TextFaint, Modifier.weight(1f))
+            MicroLabel("\${article.provider} · \${article.language.ifBlank { "—" }}", IntelColors.TextFaint, Modifier.weight(1f))
             DataText(article.domain, IntelColors.TextFaint, size = 8, maxLines = 1)
         }
     }
@@ -802,6 +822,7 @@ private suspend fun persistNews(store: LocalStore, result: NewsSearchResult) = w
 @Composable
 private fun SearchProgressPanel(
     message: String,
+    progress: Float,
     elapsedMs: Long,
     accent: androidx.compose.ui.graphics.Color,
     running: Boolean
@@ -812,13 +833,54 @@ private fun SearchProgressPanel(
             Spacer(Modifier.weight(1f))
             MicroLabel(formatElapsed(elapsedMs), IntelColors.Text)
         }
-        LinearProgressIndicator(
+        Row(
             modifier = Modifier.fillMaxWidth(),
-            color = accent,
-            trackColor = IntelColors.HairlineStrong
-        )
+            horizontalArrangement = Arrangement.spacedBy(3.dp)
+        ) {
+            repeat(20) { index ->
+                val filled = (index + 1) / 20f <= progress.coerceIn(0f, 1f)
+                Spacer(
+                    Modifier.weight(1f).height(6.dp)
+                        .background(
+                            if (filled) accent else IntelColors.Hairline,
+                            RoundedCornerShape(1.dp)
+                        )
+                )
+            }
+        }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            MicroLabel("STAGE TRACKER", IntelColors.TextFaint)
+            Spacer(Modifier.weight(1f))
+            MicroLabel("\${(progress.coerceIn(0f, 1f) * 100).toInt()}%", accent)
+        }
         Text(message, color = IntelColors.TextDim, fontSize = 9.sp, lineHeight = 14.sp)
     }
+}
+
+private fun progressFor(message: String): Float = when {
+    message.contains("اكتمل") -> 1f
+    message.contains("فلترة") || message.contains("ترتيب") || message.contains("تحليل") -> 0.92f
+    message.contains("الناشرين") || message.contains("الخلاصات") -> 0.72f
+    message.contains("المعرفة") || message.contains("المجتمعات") -> 0.52f
+    message.contains("توسيع") || message.contains("مسارات") -> 0.26f
+    message.contains("تهيئة") -> 0.06f
+    else -> 0.38f
+}
+
+private fun formatPublishedDate(raw: String): String {
+    val value = raw.trim()
+    val parsed = runCatching { java.time.Instant.parse(value) }
+        .recoverCatching { java.time.OffsetDateTime.parse(value).toInstant() }
+        .recoverCatching { java.time.ZonedDateTime.parse(value, java.time.format.DateTimeFormatter.RFC_1123_DATE_TIME).toInstant() }
+        .recoverCatching {
+            val formatter = java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmssX", Locale.US)
+            formatter.parse(value, java.time.Instant::from)
+        }
+        .getOrNull()
+    return parsed?.let {
+        java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm", Locale.getDefault())
+            .withZone(java.time.ZoneId.systemDefault()).format(it)
+    } ?: value.ifBlank { "تاريخ النشر غير متاح" }
 }
 
 private fun formatElapsed(milliseconds: Long): String {
