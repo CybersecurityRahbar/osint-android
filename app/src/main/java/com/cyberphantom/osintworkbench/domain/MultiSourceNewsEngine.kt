@@ -215,7 +215,7 @@ class MultiSourceNewsEngine {
             }
             if (sortedArticles.isEmpty()) {
                 add(
-                    "لم تُرجع مصادر الأخبار مقالات ضمن الفترة المحددة. " +
+                    (if (hasRange) "لم تُرجع مصادر الأخبار مقالات ضمن الفترة المحددة. " else "لم تُرجع المصادر مقالات تطابق عبارة البحث. ") +
                         (if (failureText.isBlank()) "تحققت المصادر دون أخطاء معلنة." else "أخطاء بعض المصادر: $failureText") +
                         (if (emptySources.isEmpty()) "" else " مصادر استجابت دون مقالات: ${emptySources.take(6).joinToString("، ")}")
                 )
@@ -229,7 +229,10 @@ class MultiSourceNewsEngine {
             articles = sortedArticles,
             warning = warnings.takeIf { it.isNotEmpty() }?.joinToString("\n"),
             elapsedMs = ((System.nanoTime() - started) / 1_000_000L).coerceAtLeast(0L),
-            sourcesAttempted = outcomes.size
+            sourcesAttempted = outcomes.size,
+            sourcesResponded = outcomes.count { it.error == null },
+            sourcesWithArticles = outcomes.count { it.articles.isNotEmpty() },
+            sourcesFailed = outcomes.count { it.error != null }
         )
     }
 
@@ -302,7 +305,7 @@ class MultiSourceNewsEngine {
             val maxAttempts = if (endpointIndex == 0) 2 else 1
             for (attempt in 0 until maxAttempts) {
                 try {
-                    val raw = getText(endpoint, 9_000, "application/json, text/plain, */*")
+                    val raw = getText(endpoint, 14_000, "application/json, text/plain, */*")
                     val root = try {
                         JSONObject(raw)
                     } catch (error: Exception) {
@@ -319,7 +322,7 @@ class MultiSourceNewsEngine {
                     val retryable = listOf("HTTP 429", "HTTP 500", "HTTP 502", "HTTP 503", "HTTP 504", "timed out", "timeout")
                         .any { message.contains(it, ignoreCase = true) }
                     if (!retryable || attempt == maxAttempts - 1) break
-                    kotlinx.coroutines.delay(5_200L)
+                    kotlinx.coroutines.delay(if (message.contains("429")) 1_500L else 300L)
                 }
             }
             if (endpointIndex == endpoints.lastIndex && lastFailure != null) {
@@ -476,8 +479,10 @@ class MultiSourceNewsEngine {
         require(xml.length <= 2_000_000) { "RSS response exceeds the parser size limit." }
         val factory = DocumentBuilderFactory.newInstance().apply {
             isNamespaceAware = false
-            isXIncludeAware = false
-            isExpandEntityReferences = false
+            // Android's built-in factory throws UnsupportedOperationException for XInclude.
+            // This hardening flag is optional; disabling external entities below remains required.
+            runCatching { isXIncludeAware = false }
+            runCatching { isExpandEntityReferences = false }
             runCatching { setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true) }
             runCatching { setFeature("http://apache.org/xml/features/disallow-doctype-decl", true) }
             runCatching { setFeature("http://xml.org/sax/features/external-general-entities", false) }
@@ -486,6 +491,11 @@ class MultiSourceNewsEngine {
             runCatching { setAttribute("http://javax.xml.XMLConstants/property/accessExternalDTD", "") }
             runCatching { setAttribute("http://javax.xml.XMLConstants/property/accessExternalSchema", "") }
         }
+        val normalizedXml = xml.trimStart('\uFEFF', ' ', '\n', '\r', '\t')
+        require(
+            !normalizedXml.startsWith("<!doctype html", ignoreCase = true) &&
+                !normalizedXml.startsWith("<html", ignoreCase = true)
+        ) { "أعاد مصدر الأخبار صفحة HTML/تحقق بدلاً من RSS أو Atom." }
         val document = factory.newDocumentBuilder().parse(InputSource(StringReader(xml)))
         val rssItems = document.getElementsByTagName("item")
         val items = if (rssItems.length == 0) document.getElementsByTagName("entry") else rssItems
