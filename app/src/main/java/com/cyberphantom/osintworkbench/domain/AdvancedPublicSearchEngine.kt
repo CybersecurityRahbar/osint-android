@@ -145,12 +145,23 @@ class AdvancedPublicSearchEngine {
         val started = System.nanoTime()
         val query = rawQuery.trim()
         val allQueries = buildSearchQueries(query, kind)
-        val queries = when (kind) {
-            IdentifierKind.NAME -> allQueries.take(5)
-            IdentifierKind.USERNAME -> allQueries.take(4)
-            IdentifierKind.PHONE -> allQueries.take(5)
-            IdentifierKind.EMAIL -> allQueries.take(4)
-        }.distinct()
+        val dorkCategories = when (kind) {
+            IdentifierKind.NAME -> listOf(DorkCategory.PEOPLE, DorkCategory.SOCIAL, DorkCategory.DOCS, DorkCategory.FORUM, DorkCategory.PASTE, DorkCategory.ARCHIVE)
+            IdentifierKind.USERNAME -> listOf(DorkCategory.SOCIAL, DorkCategory.CODE, DorkCategory.FORUM, DorkCategory.PASTE)
+            IdentifierKind.PHONE -> listOf(DorkCategory.FORUM, DorkCategory.SOCIAL, DorkCategory.PASTE)
+            IdentifierKind.EMAIL -> listOf(DorkCategory.LEAKS, DorkCategory.DOCS, DorkCategory.CODE, DorkCategory.PASTE)
+        }
+        val targetedDorks = DorkCatalogue.expand(query, dorkCategories, 10)
+        val baseQueries = allQueries.filterNot { it in DorkCatalogue.expand(query, dorkCategories, 12) }
+        val baseBudget = when (kind) {
+            IdentifierKind.NAME -> 5
+            IdentifierKind.USERNAME -> 4
+            IdentifierKind.PHONE -> 5
+            IdentifierKind.EMAIL -> 4
+        }
+        // Interleave independent public-index queries with source-specific dorks so the
+        // bounded adapter still reaches Reddit, forums, public profiles and document indexes.
+        val queries = (baseQueries.take(baseBudget) + targetedDorks.take(5)).distinct()
         val limit = maxResults.coerceIn(10, 80)
         onProgress("توسيع العبارة إلى ${queries.size} مسارات بحث متخصصة…")
 
