@@ -102,7 +102,7 @@ class ApiProviderSettingsStore(context: Context) {
         preferences.getInt(KEY_EXTERNAL_PROVIDER_LIMIT, DEFAULT_SEARCH_REQUEST_LIMIT).coerceIn(1, 5)
 
     @Synchronized
-    fun setSearchRequestLimit(value: Int) {
+    fun setExternalProviderLimit(value: Int) {
         preferences.edit()
             .putInt(KEY_EXTERNAL_PROVIDER_LIMIT, value.coerceIn(1, 5))
             .apply()

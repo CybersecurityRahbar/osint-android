@@ -163,7 +163,7 @@ class ExternalApiSearchClient(private val settings: ApiProviderSettingsStore) {
             else -> error("Provider is not a general-search source.")
         }
         detectLogicalError(provider, root)
-        return parseSearchResults(provider, root, includeImages)
+        parseSearchResults(provider, root, includeImages)
     }
 
     private fun parseSearchResults(
@@ -362,7 +362,7 @@ class ExternalApiNewsClient(private val settings: ApiProviderSettingsStore) {
             else -> error("Provider is not a news source.")
         }
         detectLogicalError(provider, root)
-        return parseNewsResults(provider, root, includeImages)
+        parseNewsResults(provider, root, includeImages)
     }
 
     private fun parseNewsResults(
