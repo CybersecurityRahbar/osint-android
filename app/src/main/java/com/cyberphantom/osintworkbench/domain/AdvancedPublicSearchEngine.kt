@@ -64,6 +64,10 @@ class AdvancedPublicSearchEngine {
                 }
                 listOf(
                     "\"$username\"",
+                    "$username site:github.com/$username",
+                    "$username site:gitlab.com/$username",
+                    "$username site:reddit.com/user/$username",
+                    "\"@$username\"",
                     "\"$username\" site:reddit.com",
                     "\"$username\" (site:github.com OR site:gitlab.com OR site:gist.github.com)",
                     "\"$username\" (site:youtube.com OR site:x.com OR site:threads.net OR site:bsky.app)",
@@ -203,7 +207,7 @@ class AdvancedPublicSearchEngine {
                 .getOrDefault(emptyList())
         } else emptyList()
 
-        val allResults = (broadOutcome.results + enrichment.results + instantResults)
+        val collectedResults = (broadOutcome.results + enrichment.results + instantResults)
             .filter { it.url.startsWith("https://") }
             .map { result ->
                 if (!result.imageUrl.isNullOrBlank()) {
@@ -216,6 +220,19 @@ class AdvancedPublicSearchEngine {
                 if (!it.imageUrl.isNullOrBlank()) "image:" + canonicalUrl(it.imageUrl)
                 else canonicalUrl(it.url)
             }
+
+        val usernameNeedle = query.trim().removePrefix("@")
+        val allResults = if (kind == IdentifierKind.USERNAME) {
+            val exactPages = collectedResults.filter {
+                it.imageUrl.isNullOrBlank() && containsExactUsername(usernameNeedle, it)
+            }
+            val indexedImages = collectedResults.filter { !it.imageUrl.isNullOrBlank() }.map {
+                it.copy(
+                    description = (it.description + " · صورة مفهرسة لعبارة البحث؛ ليست إثباتاً لوجود الحساب.").take(500)
+                )
+            }
+            exactPages + indexedImages
+        } else collectedResults
 
         val images = allResults.filter { !it.imageUrl.isNullOrBlank() }
             .sortedWith(compareByDescending<PublicProfileResult> { it.relevanceScore }.thenByDescending { it.confidence })
@@ -231,6 +248,10 @@ class AdvancedPublicSearchEngine {
             addAll(enrichment.warnings)
             if (shouldTryInstantAnswer && instantResults.isEmpty()) {
                 add("لم يُرجع مصدر الإجابة الفورية نتائج إضافية؛ لا يؤثر ذلك في بقية الفهارس.")
+            }
+            if (kind == IdentifierKind.USERNAME && collectedResults.any { it.imageUrl.isNullOrBlank() } &&
+                collectedResults.none { it.imageUrl.isNullOrBlank() && containsExactUsername(usernameNeedle, it) }) {
+                add("استُبعدت نتائج ويب لم تتضمن تطابقاً دقيقاً مع اسم المستخدم؛ لا نعرض نتائج جزئية مضللة.")
             }
             if (merged.isEmpty()) {
                 add("لم تُستخرج نتائج من المصادر التي أمكن الوصول إليها. قد تكون الفهارس محدودة أو محجوبة أو لا تحتوي العبارة؛ النتيجة الصفرية لا تثبت غياب المعلومات.")
@@ -507,8 +528,9 @@ class AdvancedPublicSearchEngine {
             }
             IdentifierKind.USERNAME -> {
                 val username = query.trim().removePrefix("@").lowercase(Locale.ROOT)
-                if (username.length >= 2 && (title.contains(username) || destination.contains(username))) score += 48
-                else if (username.length >= 2 && description.contains(username)) score += 25
+                if (username.length >= 2 && containsExactIdentifierToken(title, username)) score += 48
+                else if (username.length >= 2 && containsExactIdentifierToken(destination, username)) score += 48
+                else if (username.length >= 2 && containsExactIdentifierToken(description, username)) score += 30
             }
             IdentifierKind.NAME -> {
                 val phrase = normalizeForRanking(query)
@@ -526,6 +548,25 @@ class AdvancedPublicSearchEngine {
 
         score -= queryExpansionIndex.coerceAtLeast(0) * 3
         return score.coerceIn(0, 100)
+    }
+
+    internal fun containsExactUsername(username: String, result: PublicProfileResult): Boolean {
+        val needle = username.trim().removePrefix("@")
+        if (needle.length < 2) return false
+        val decodedUrl = runCatching {
+            URLDecoder.decode(result.url, StandardCharsets.UTF_8.name())
+        }.getOrDefault(result.url)
+        return containsExactIdentifierToken(result.title, needle) ||
+            containsExactIdentifierToken(result.description, needle) ||
+            containsExactIdentifierToken(decodedUrl, needle)
+    }
+
+    private fun containsExactIdentifierToken(value: String, identifier: String): Boolean {
+        if (identifier.isBlank()) return false
+        val pattern = Regex(
+            "(?i)(^|[^A-Za-z0-9._-])" + Regex.escape(identifier) + "($|[^A-Za-z0-9._-])"
+        )
+        return pattern.containsMatchIn(value)
     }
 
     private fun normalizeForRanking(value: String): String =
