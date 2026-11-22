@@ -9,6 +9,8 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.sync.Semaphore
 import org.json.JSONArray
 import org.json.JSONObject
+import org.jsoup.Jsoup
+import org.jsoup.nodes.Element
 import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLEncoder
@@ -110,56 +112,68 @@ internal class BroadPublicSearchAdapter {
     }
 
     internal fun parseHtml(html: String, provider: String, limit: Int = 20): List<PublicProfileResult> {
-        val hits = mutableListOf<Triple<String, String, String>>()
-        fun add(attrs: String, rawTitle: String, snippet: String = "") {
-            val href = attr(attrs, "href") ?: return
-            val title = clean(rawTitle)
-            if (title.length >= 3) hits += Triple(href, title, clean(snippet))
-        }
-        val key = provider.lowercase(Locale.ROOT)
-        when {
-            key.contains("duckduckgo") -> Regex("""(?is)<a\b(?=[^>]*\bclass\s*=\s*["'][^"']*(?:result__a|result-link)[^"']*["'])[^>]*>(.*?)</a>""").findAll(html)
-                .forEach { add(it.value.substringBefore('>'), it.groupValues[1]) }
-            key == "bing" -> {
-                for (block in Regex("""(?is)<li\b(?=[^>]*\bclass\s*=\s*["'][^"']*\bb_algo\b[^"']*["'])[^>]*>(.*?)</li>""").findAll(html)) {
-                    val body = block.groupValues[1]
-                    val a = Regex("""(?is)<h2\b[^>]*>.*?<a\b([^>]*)>(.*?)</a>.*?</h2>""").find(body) ?: continue
-                    val snippet = Regex("""(?is)<p\b[^>]*>(.*?)</p>""").find(body)?.groupValues?.getOrNull(1).orEmpty()
-                    add(a.groupValues[1], a.groupValues[2], snippet)
-                }
-            }
-            key.contains("brave") -> Regex("""(?is)<a\b(?=[^>]*\bclass\s*=\s*["'][^"']*(?:result-header|heading)[^"']*["'])[^>]*>(.*?)</a>""").findAll(html)
-                .forEach { add(it.value.substringBefore('>'), it.groupValues[1]) }
-            key.contains("mojeek") -> Regex("""(?is)<a\b(?=[^>]*\bclass\s*=\s*["'][^"']*\bob\b[^"']*["'])[^>]*>(.*?)</a>""").findAll(html)
-                .forEach { add(it.value.substringBefore('>'), it.groupValues[1]) }
-            key.contains("yandex") -> {
-                for (block in Regex("""(?is)<(?:li|div)\b(?=[^>]*\bclass\s*=\s*["'][^"']*\bserp-item\b[^"']*["'])[^>]*>(.*?)</(?:li|div)>""").findAll(html)) {
-                    val a = Regex("""(?is)<a\b([^>]*)>(.*?)</a>""").find(block.groupValues[1]) ?: continue
-                    add(a.groupValues[1], a.groupValues[2])
-                }
-            }
-            else -> {
-                for (block in Regex("""(?is)<(?:div|article)\b(?=[^>]*\bclass\s*=\s*["'][^"']*(?:w-gl__result|result)[^"']*["'])[^>]*>(.*?)</(?:div|article)>""").findAll(html)) {
-                    val body = block.groupValues[1]
-                    val a = Regex("""(?is)<a\b([^>]*)>(.*?)</a>""").find(body) ?: continue
-                    val snippet = Regex("""(?is)<p\b[^>]*>(.*?)</p>""").find(body)?.groupValues?.getOrNull(1).orEmpty()
-                    add(a.groupValues[1], a.groupValues[2], snippet)
-                }
-            }
-        }
-        if (hits.isEmpty()) Regex("""(?is)<h2\b[^>]*>.*?<a\b([^>]*)>(.*?)</a>.*?</h2>""").findAll(html)
-            .forEach { add(it.groupValues[1], it.groupValues[2]) }
-        if (hits.isEmpty()) Regex("""(?is)<a\b([^>]*)>(.*?)</a>""").findAll(html)
-            .filter { it.groupValues[2].contains("<h3", true) }
-            .forEach { add(it.groupValues[1], it.groupValues[2]) }
+        if (html.isBlank()) return emptyList()
+        val document = Jsoup.parse(html)
+        val pageTitle = document.title().lowercase(Locale.ROOT)
+        if (listOf("captcha", "unusual traffic", "robot check", "verify you are human", "just a moment")
+                .any(pageTitle::contains)) return emptyList()
 
-        val rejected = setOf("google.com", "bing.com", "microsoft.com", "duckduckgo.com", "brave.com", "mojeek.com", "yahoo.com", "startpage.com", "ecosia.org", "yandex.com")
-        return hits.mapNotNull { (attrs, title, snippet) ->
-            val url = unwrap(attrs) ?: return@mapNotNull null
-            val host = host(url)
-            if (host.isBlank() || rejected.any { host == it || host.endsWith(".$it") }) return@mapNotNull null
-            PublicProfileResult("$provider · $host", clean(title).take(240), clean(snippet).ifBlank { "نتيجة ويب عامة مفهرسة؛ افتح المصدر للتحقق من النص والسياق." }.take(500), url, if (snippet.isBlank()) 60 else 70)
-        }.distinctBy { canonical(it.url) }.take(limit)
+        val key = provider.lowercase(Locale.ROOT)
+        val selectors = when {
+            key.contains("duckduckgo") -> listOf("a.result__a", "a.result-link")
+            key == "bing" || key.contains("bing ") -> listOf("li.b_algo h2 a", ".b_algo h2 a")
+            key.contains("google") -> listOf("a:has(h3)", "h3 a")
+            key.contains("brave") -> listOf("a.result-header", "a.heading", ".snippet a")
+            key.contains("mojeek") -> listOf("a.ob")
+            key.contains("yandex") -> listOf(".serp-item a")
+            key.contains("startpage") -> listOf(".w-gl__result a", "a.w-gl__result-title", ".result a")
+            else -> listOf("li.b_algo h2 a", "a:has(h3)", "h2 a", "h3 a", "a.result__a", "a.result-link", "a.ob")
+        }
+
+        val seenAnchors = HashSet<String>()
+        val hits = buildList {
+            for (selector in selectors) {
+                for (anchor in document.select(selector)) {
+                    if (size >= limit.coerceIn(1, 80)) break
+                    val href = anchor.attr("href").trim()
+                    val title = anchor.text().trim()
+                    if (href.isBlank() || title.length < 3) continue
+                    val identity = href + "|" + title
+                    if (!seenAnchors.add(identity)) continue
+
+                    val container = anchor.closest(
+                        "li.b_algo, .result, .w-gl__result, article, .snippet, .web-result"
+                    ) ?: anchor.parent()
+                    val snippet = container?.selectFirst(
+                        ".result__snippet, .b_caption p, .snippet, .description, p"
+                    )?.text().orEmpty()
+                    add(Triple(href, title, snippet))
+                }
+                if (size >= limit.coerceIn(1, 80)) break
+            }
+        }
+
+        val rejected = setOf(
+            "google.com", "bing.com", "microsoft.com", "duckduckgo.com",
+            "brave.com", "mojeek.com", "yahoo.com", "startpage.com",
+            "ecosia.org", "yandex.com"
+        )
+        return hits.mapNotNull { (href, title, snippet) ->
+            val url = unwrap(href) ?: return@mapNotNull null
+            val domain = host(url)
+            if (domain.isBlank() || rejected.any { domain == it || domain.endsWith(".$it") }) {
+                return@mapNotNull null
+            }
+            PublicProfileResult(
+                provider = "$provider · $domain",
+                title = clean(title).take(240),
+                description = clean(snippet).ifBlank {
+                    "نتيجة ويب عامة مفهرسة؛ افتح المصدر للتحقق من النص والسياق."
+                }.take(500),
+                url = url,
+                confidence = if (snippet.isBlank()) 60 else 70
+            )
+        }.distinctBy { canonical(it.url) }.take(limit.coerceIn(1, 80))
     }
 
     private fun parseQwant(root: JSONObject, provider: String, limit: Int): List<PublicProfileResult> {
@@ -360,14 +374,13 @@ internal class BroadPublicSearchAdapter {
         } finally { connection.disconnect() }
     }
 
-    private fun unwrap(attrs: String): String? {
-        val raw = attr(attrs, "href") ?: attrs
+    private fun unwrap(rawHref: String): String? {
         return runCatching {
             val absolute = when {
-                raw.startsWith("//") -> "https:$raw"
-                raw.startsWith("/url?") -> "https://www.google.com$raw"
-                raw.startsWith("/") -> "https://duckduckgo.com$raw"
-                else -> raw
+                rawHref.startsWith("//") -> "https:$rawHref"
+                rawHref.startsWith("/url?") -> "https://www.google.com$rawHref"
+                rawHref.startsWith("/") -> "https://duckduckgo.com$rawHref"
+                else -> rawHref
             }
             val uri = URL(absolute)
             val h = uri.host.lowercase(Locale.ROOT)
@@ -404,9 +417,6 @@ internal class BroadPublicSearchAdapter {
                 .takeIf { it.startsWith("https://") || it.startsWith("http://") }
         }.getOrNull()
     }
-
-    private fun attr(tag: String, name: String): String? =
-        Regex("(?is)\\b" + Regex.escape(name) + "\\s*=\\s*[\\\"']([^\\\"']+)[\\\"']").find(tag)?.groupValues?.getOrNull(1)
 
     private fun clean(value: String): String = value
         .replace(Regex("(?is)<script\\b.*?</script>"), " ")
