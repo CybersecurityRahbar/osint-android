@@ -78,13 +78,7 @@ fun CasesScreen(cases: List<CaseRow>, store: LocalStore, onSaved: () -> Unit) {
         } else {
             SectionBar("01", "الحالات المحفوظة", "${cases.size}")
             cases.forEach { item ->
-                Column(
-                    Modifier
-                        .fillMaxWidth()
-                        .background(IntelColors.Panel, RoundedCornerShape(2.dp))
-                        .padding(10.dp),
-                    verticalArrangement = Arrangement.spacedBy(5.dp)
-                ) {
+                IntelPanel(accent = IntelColors.Amber, contentPadding = 10) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
                             item.title,
@@ -94,14 +88,6 @@ fun CasesScreen(cases: List<CaseRow>, store: LocalStore, onSaved: () -> Unit) {
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                             modifier = Modifier.weight(1f)
-                        )
-                        Icon(
-                            Icons.Filled.Delete,
-                            contentDescription = "حذف الحالة",
-                            tint = IntelColors.Red,
-                            modifier = Modifier
-                                .size(15.dp)
-                                .padding(0.dp)
                         )
                         TextButton(onClick = {
                             scope.launch {
@@ -114,6 +100,7 @@ fun CasesScreen(cases: List<CaseRow>, store: LocalStore, onSaved: () -> Unit) {
                     if (item.scope.isNotBlank()) {
                         Text(item.scope, fontSize = 9.sp, color = IntelColors.TextDim, lineHeight = 13.sp)
                     }
+                    Hairline()
                     MicroLabel(formatTime(item.createdAt), IntelColors.TextFaint)
                 }
             }
