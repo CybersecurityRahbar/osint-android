@@ -83,4 +83,29 @@ class UsernameEnumerationEngineTest {
         val hit = engine.classify(youtube, "https://www.youtube.com/@ghost", 200, "<html>This page isn't available</html>")
         assertEquals(ProbeStatus.NOT_FOUND, hit.status)
     }
+
+    @Test
+    fun htmlProfileRequiresExactUsernameAndProfileMetadata() {
+        val instagram = PlatformProbe(
+            "Instagram",
+            "مجتمع",
+            "https://www.instagram.com/%s/",
+            ProbeKind.HTML
+        )
+        val found = engine.classify(
+            instagram,
+            "https://www.instagram.com/cyberphantom/",
+            200,
+            """<html><head><meta property="og:title" content="cyberphantom (@cyberphantom)"></head></html>"""
+        )
+        val unrelated = engine.classify(
+            instagram,
+            "https://www.instagram.com/cyberphantom/",
+            200,
+            """<html><head><meta property="og:title" content="cyberphantom fan page"></head></html>"""
+        )
+        assertEquals(ProbeStatus.FOUND, found.status)
+        assertEquals(ProbeStatus.UNKNOWN, unrelated.status)
+    }
+
 }
