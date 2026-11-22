@@ -247,6 +247,7 @@ class ExternalApiSearchClient(private val settings: ApiProviderSettingsStore) {
 class ExternalApiNewsClient(private val settings: ApiProviderSettingsStore) {
     suspend fun search(
         rawQuery: String,
+        maxCalls: Int,
         maxResults: Int,
         includeImages: Boolean,
         onProgress: (String) -> Unit = {}
@@ -254,7 +255,9 @@ class ExternalApiNewsClient(private val settings: ApiProviderSettingsStore) {
         val query = rawQuery.trim()
         val enabled = NEWS_ORDER.filter(settings::isEnabled)
         val withoutKeys = enabled.filter { settings.availableKeys(it).isEmpty() }
-        val selected = enabled.filter { settings.availableKeys(it).isNotEmpty() }
+        val selected = enabled
+            .filter { settings.availableKeys(it).isNotEmpty() }
+            .take(maxCalls.coerceIn(1, NEWS_ORDER.size))
         if (selected.isEmpty()) {
             val warnings = if (enabled.isEmpty()) emptyList() else
                 listOf("مصادر الأخبار المفعّلة لا تحتوي على مفاتيح قابلة للقراءة؛ راجع إعدادات المفاتيح.")

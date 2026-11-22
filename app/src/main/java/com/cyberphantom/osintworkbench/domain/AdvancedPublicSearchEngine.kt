@@ -219,7 +219,7 @@ class AdvancedPublicSearchEngine(private val appContext: Context? = null) {
             ExternalApiSearchClient(providerSettings).search(
                 rawQuery = query,
                 kind = kind,
-                maxCalls = providerSettings.searchRequestLimit(),
+                maxCalls = providerSettings.externalProviderLimit(),
                 maxResults = limit,
                 includeImages = includeImages,
                 onProgress = onProgress

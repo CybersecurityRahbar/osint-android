@@ -112,7 +112,7 @@ fun ResearchScreen(
     val scope = rememberCoroutineScope()
     val apiProviderSettings = remember(context) { ApiProviderSettingsStore(context) }
 
-    var externalSearchLimit by rememberSaveable { mutableStateOf(apiProviderSettings.searchRequestLimit()) }
+    var externalProviderLimit by rememberSaveable { mutableStateOf(apiProviderSettings.externalProviderLimit()) }
     var mode by rememberSaveable { mutableStateOf(if (startInNews) ResearchMode.NEWS else ResearchMode.IDENTIFIERS) }
     var query by rememberSaveable { mutableStateOf(initialQuery) }
     var kind by rememberSaveable { mutableStateOf(IdentifierKind.NAME) }
@@ -184,6 +184,31 @@ fun ResearchScreen(
                     onClick = { mode = item; error = null },
                     modifier = Modifier.weight(1f),
                     accent = IntelColors.Violet
+                )
+            }
+        }
+
+        if (mode != ResearchMode.PRIVATE_SOURCES) {
+            val accent = if (mode == ResearchMode.NEWS) IntelColors.Blue else IntelColors.Violet
+            IntelPanel(accent = accent) {
+                SectionBar("API", "عدد المصادر الخارجية لكل عملية", externalProviderLimit.toString() + " / 5", accent)
+                Text(
+                    "هذا الحد يضبط عدد مزودي API الخارجيين لكل عملية: حتى 5 في البحث الشامل وحتى 4 في الأخبار. لا يُستدعى إلا المصدر المفعّل الذي لديه مفتاح محفوظ. قد يزيد عدد المحاولات عند الانتقال تلقائياً إلى مفتاح بديل.",
+                    color = IntelColors.TextFaint,
+                    fontSize = 9.sp,
+                    lineHeight = 14.sp
+                )
+                Slider(
+                    value = externalProviderLimit.toFloat(),
+                    onValueChange = { selected ->
+                        val next = selected.roundToInt().coerceIn(1, 5)
+                        if (next != externalProviderLimit) {
+                            externalProviderLimit = next
+                            apiProviderSettings.setExternalProviderLimit(next)
+                        }
+                    },
+                    valueRange = 1f..5f,
+                    steps = 3
                 )
             }
         }
@@ -361,25 +386,6 @@ fun ResearchScreen(
                         title = "تضمين صور المعاينة",
                         detail = "يبطئ الجمع قليلاً لكنه يفيد التحقق البصري من الحسابات والمواقع.",
                         accent = IntelColors.Violet
-                    )
-                    SectionBar("API", "عدد طلبات البحث الخارجية", externalSearchLimit.toString() + " / 5", IntelColors.Violet)
-                    Text(
-                        "حدد الحد الأعلى لعدد مزودي API الذين سيُستعلم منهم في كل عملية بحث عن المعرّفات. كل مزود ينفذ طلباً أساسياً واحداً، وقد تُرسل طلبات إضافية فقط عند فشل المفتاح والانتقال للمفتاح البديل.",
-                        color = IntelColors.TextFaint,
-                        fontSize = 9.sp,
-                        lineHeight = 14.sp
-                    )
-                    Slider(
-                        value = externalSearchLimit.toFloat(),
-                        onValueChange = { selected ->
-                            val next = selected.roundToInt().coerceIn(1, 5)
-                            if (next != externalSearchLimit) {
-                                externalSearchLimit = next
-                                apiProviderSettings.setSearchRequestLimit(next)
-                            }
-                        },
-                        valueRange = 1f..5f,
-                        steps = 3
                     )
                     NoteBlock(
                         "استعلام البحث (وقد يتضمن اسماً أو بريداً أو رقماً) سيُرسل إلى مزودي API الذين فعّلتهم وحفظت مفاتيحهم. عطّل أي مصدر لا تريد إرسال استعلاماتك إليه.",

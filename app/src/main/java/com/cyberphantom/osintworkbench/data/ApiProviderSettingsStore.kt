@@ -98,13 +98,13 @@ class ApiProviderSettingsStore(context: Context) {
     }
 
     @Synchronized
-    fun searchRequestLimit(): Int =
-        preferences.getInt(KEY_SEARCH_REQUEST_LIMIT, DEFAULT_SEARCH_REQUEST_LIMIT).coerceIn(1, 5)
+    fun externalProviderLimit(): Int =
+        preferences.getInt(KEY_EXTERNAL_PROVIDER_LIMIT, DEFAULT_SEARCH_REQUEST_LIMIT).coerceIn(1, 5)
 
     @Synchronized
     fun setSearchRequestLimit(value: Int) {
         preferences.edit()
-            .putInt(KEY_SEARCH_REQUEST_LIMIT, value.coerceIn(1, 5))
+            .putInt(KEY_EXTERNAL_PROVIDER_LIMIT, value.coerceIn(1, 5))
             .apply()
     }
 
@@ -159,7 +159,7 @@ class ApiProviderSettingsStore(context: Context) {
     companion object {
         const val KEY_SLOTS = 3
         const val DEFAULT_SEARCH_REQUEST_LIMIT = 3
-        private const val KEY_SEARCH_REQUEST_LIMIT = "search_request_limit"
+        private const val KEY_EXTERNAL_PROVIDER_LIMIT = "external_provider_limit"
         private const val KEY_ALIAS = "osint_external_api_aes_v1"
         private const val ANDROID_KEYSTORE = "AndroidKeyStore"
         private const val TRANSFORMATION = "AES/GCM/NoPadding"

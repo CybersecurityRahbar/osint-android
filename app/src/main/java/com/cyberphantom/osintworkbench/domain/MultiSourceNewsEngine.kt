@@ -177,8 +177,10 @@ class MultiSourceNewsEngine(private val appContext: Context? = null) {
         outcomes = outcomes + directOutcomes + publisherOutcomes
 
         val externalNewsOutcome = appContext?.let { app ->
-            ExternalApiNewsClient(ApiProviderSettingsStore(app)).search(
+            val providerSettings = ApiProviderSettingsStore(app)
+            ExternalApiNewsClient(providerSettings).search(
                 rawQuery = clean,
+                maxCalls = providerSettings.externalProviderLimit(),
                 maxResults = limit,
                 includeImages = includeImages,
                 onProgress = onProgress
