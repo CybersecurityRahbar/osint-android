@@ -195,7 +195,8 @@ class UsernameEnumerationEngine {
                     body.contains("profilepage", ignoreCase = true) ||
                     body.contains("\"profile\":", ignoreCase = true)
 
-                if (bodyHasExactUsername && (explicitSignature || openGraphSignature)) {
+                val explicitHandleSignature = containsExplicitHandleSignature(body, expectedUsername.orEmpty())
+                if (bodyHasExactUsername && (explicitSignature || (openGraphSignature && explicitHandleSignature))) {
                     return hit(ProbeStatus.FOUND, if (explicitSignature) 82 else 74,
                         "ظهرت بيانات ملف عام مع تطابق دقيق لاسم المستخدم.")
                 }
@@ -224,6 +225,17 @@ class UsernameEnumerationEngine {
         URLDecoder.decode(candidate, StandardCharsets.UTF_8.name())
             .takeIf { it.isNotBlank() && it != "xml=1" }
     }.getOrNull()
+
+    private fun containsExplicitHandleSignature(body: String, username: String): Boolean {
+        val needle = username.trim().removePrefix("@")
+        if (needle.length < 2) return false
+        val escaped = Regex.escape(needle)
+        val atHandle = Regex("(?i)@" + escaped + "($|[^A-Za-z0-9._-])").containsMatchIn(body)
+        val structuredUsername = Regex(
+            "(?i)[\\\"'](?:username|screen_name|uniqueId|handle)[\\\"']\\\\s*:\\\\s*[\\\"']" + escaped + "[\\\"']"
+        ).containsMatchIn(body)
+        return atHandle || structuredUsername
+    }
 
     private fun containsExactProfileToken(body: String, username: String): Boolean {
         val needle = username.trim().removePrefix("@")
