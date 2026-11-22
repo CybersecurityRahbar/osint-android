@@ -1,7 +1,6 @@
 package com.cyberphantom.osintworkbench.ui.telegram
 
 import android.webkit.WebView
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -19,10 +18,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.ContentCopy
-import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material3.Icon
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -41,10 +38,10 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.viewinterop.AndroidView
 import com.cyberphantom.osintworkbench.data.LocalStore
 import com.cyberphantom.osintworkbench.data.PrivateSourceBot
 import com.cyberphantom.osintworkbench.data.PrivateSourceKind
+import com.cyberphantom.osintworkbench.data.PrivateSourceFlow
 import com.cyberphantom.osintworkbench.data.PrivateSourcesStore
 import com.cyberphantom.osintworkbench.ui.design.ActionButton
 import com.cyberphantom.osintworkbench.ui.design.DataText
@@ -68,7 +65,7 @@ import kotlinx.coroutines.withContext
 import java.util.Locale
 
 @Composable
-fun PrivateSearchPanel(store: LocalStore, onSaved: () -> Unit) {
+fun PrivateSearchPanel(store: LocalStore, onSaved: () -> Unit, onOpenSettings: () -> Unit) {
     val context = LocalContext.current
     val clipboard = LocalClipboardManager.current
     val configStore = remember { PrivateSourcesStore(context) }
@@ -76,14 +73,13 @@ fun PrivateSearchPanel(store: LocalStore, onSaved: () -> Unit) {
     var selectedBotId by rememberSaveable { mutableStateOf<String?>(bots.firstOrNull()?.id) }
     var query by rememberSaveable { mutableStateOf("") }
     var kind by rememberSaveable { mutableStateOf(PrivateSourceKind.NUMBER) }
-    var directSend by rememberSaveable { mutableStateOf(false) }
     var saveReplies by rememberSaveable { mutableStateOf(true) }
     var busy by remember { mutableStateOf(false) }
     var status by remember { mutableStateOf("أدخل القيمة ثم شغّل الطلب؛ سيتابع المصدر المختار ويجمع الاستجابة.") }
     var result by remember { mutableStateOf<String?>(null) }
     var log by remember { mutableStateOf(emptyList<String>()) }
     var diagnostics by remember { mutableStateOf<String?>(null) }
-    var webView by remember { mutableStateOf<WebView?>(null) }
+    val webView = remember { PrivateSessionHost.peek() }
     val scope = rememberCoroutineScope()
     val selectedBot = bots.firstOrNull { it.id == selectedBotId }
 
@@ -100,18 +96,21 @@ fun PrivateSearchPanel(store: LocalStore, onSaved: () -> Unit) {
         val bot = selectedBot ?: return
         val view = webView
         if (view == null) {
-            status = "نافذة جلسة المصدر لم تجهز بعد. انتظر ثانية ثم أعد المحاولة."
+            status = "لم تُهيأ جلسة المصدر بعد. افتح نافذة الجلسة من الإعدادات أولاً."
             return
         }
         if (query.isBlank()) {
             status = "أدخل القيمة المطلوبة أولاً."
             return
         }
+
+        val flow = bot.flow(kind)
         val command = bot.command(kind).trim()
-        if (command.isBlank()) {
-            status = "هذا النوع غير مضبوط لهذا المصدر. راجع إعدادات المصادر الخاصة."
+        if (flow != PrivateSourceFlow.VALUE_ONLY && command.isBlank()) {
+            status = "هذا النمط يحتاج إلى أمر لهذه القيمة. عدّل إعداد المصدر أو اختر «قيمة فقط»."
             return
         }
+
         val value = query.trim()
         val searchKind = kind
         busy = true
@@ -120,83 +119,95 @@ fun PrivateSearchPanel(store: LocalStore, onSaved: () -> Unit) {
         log = emptyList()
         scope.launch {
             try {
+                withContext(Dispatchers.Main) { view.onResume() }
                 addLog("المصدر المحدد: ${bot.name}")
                 val opened = TelegramWeb.openChat(view, bot.username) { addLog(it) }
                 if (!TelegramWeb.chatMatches(opened, bot.username, bot.name)) {
-                    throw IllegalStateException("تعذر التحقق من أن الجلسة تعرض المصدر المحدد. لم يتم إرسال أي طلب.")
+                    throw IllegalStateException("لم نتأكد من فتح المحادثة المحددة. لم يُرسل أي طلب.")
                 }
-                addLog("تم التحقق من نافذة المصدر.")
+                addLog("تم التحقق من المحادثة وحقل الإدخال.")
 
-                val beforeCommand = opened.messages.map { it.key }.toSet()
-                addLog("إرسال الأمر: $command")
-                val sent = TelegramWeb.send(view, command)
-                addLog("تم الإرسال عبر ${sent.via}${if (sent.composerCleared) "" else " (المحرر لم يُفرغ فوراً)"}")
-                val echo = TelegramWeb.waitFor(view, 15_000L) { snapshot ->
-                    snapshot.messages.any { it.outgoing && it.text.trim() == command && it.key !in beforeCommand }
-                }
-                if (echo == null) {
-                    throw IllegalStateException("لم يظهر تأكيد إرسال الأمر في سجل المحادثة. أوقفنا التنفيذ لتجنب إرسال القيمة إلى محادثة غير مؤكدة.")
-                }
-
-                val beforeValue = beforeCommand
                 var promptText: String? = null
-                if (directSend) {
-                    addLog("وضع الإرسال المباشر: انتظار قصير ثم إرسال القيمة.")
-                    delay(1_200L)
-                } else {
-                    addLog("انتظار مطالبة المصدر بالقيمة…")
-                    val prompt = TelegramWeb.waitFor(view, 30_000L) { snapshot ->
-                        snapshot.messages.any { message ->
-                            !message.outgoing && message.key !in beforeValue &&
-                                TelegramWeb.looksLikePrompt(message.text, searchKind, bot.prompt(searchKind))
+                if (flow != PrivateSourceFlow.VALUE_ONLY) {
+                    val beforeCommand = TelegramWeb.snapshot(view).messages.map { it.key }.toSet()
+                    addLog("إرسال أمر المصدر.")
+                    val commandSent = TelegramWeb.send(view, command)
+                    addLog("تم إرسال الأمر عبر ${commandSent.via}.")
+                    val commandEcho = TelegramWeb.waitFor(view, 20_000L) { snapshot ->
+                        snapshot.messages.any {
+                            it.outgoing && it.text.trim() == command && it.key !in beforeCommand
                         }
                     }
-                    if (prompt == null) {
-                        throw IllegalStateException("لم تصل مطالبة واضحة من المصدر. راجع نص المطالبة في إعداد المصدر أو فعّل خيار الإرسال المباشر إذا كان المصدر لا يطلب القيمة.")
-                    } else {
-                        promptText = prompt.messages.lastOrNull { !it.outgoing && it.key !in beforeValue }?.text
-                        addLog("وصلت المطالبة: ${promptText?.take(80)}")
+                    if (commandEcho == null) {
+                        throw IllegalStateException("لم يظهر تأكيد الأمر في سجل الرسائل؛ لم نرسل القيمة.")
                     }
+
+                    if (flow == PrivateSourceFlow.COMMAND_AND_PROMPT) {
+                        val promptBaseline = TelegramWeb.snapshot(view).messages.map { it.key }.toSet()
+                        addLog("انتظار مطالبة المصدر بالقيمة…")
+                        val prompt = TelegramWeb.waitFor(view, 35_000L) { snapshot ->
+                            snapshot.messages.any { message ->
+                                !message.outgoing &&
+                                    message.key !in promptBaseline &&
+                                    TelegramWeb.looksLikePrompt(message.text, searchKind, bot.prompt(searchKind))
+                            }
+                        }
+                        if (prompt == null) {
+                            throw IllegalStateException(
+                                "لم تصل مطالبة مطابقة خلال المهلة. راجع نص المطالبة أو غيّر النمط إلى «أمر + قيمة» إذا كان المصدر لا يطلب القيمة منفصلة."
+                            )
+                        }
+                        promptText = prompt.messages.lastOrNull {
+                            !it.outgoing && it.key !in promptBaseline
+                        }?.text
+                        addLog("تم التعرف على مطالبة المصدر.")
+                    } else {
+                        addLog("النمط المحدد: أمر ثم قيمة؛ لا توجد خطوة مطالبة.")
+                        delay(700L)
+                    }
+                } else {
+                    addLog("النمط المحدد: إرسال القيمة فقط دون أمر.")
                 }
 
-                val beforeReply = TelegramWeb.snapshot(view).messages.map { it.key }.toSet()
-                addLog("إرسال القيمة: $value")
+                val beforeValue = TelegramWeb.snapshot(view).messages.map { it.key }.toSet()
+                addLog("إرسال القيمة.")
                 val valueSent = TelegramWeb.send(view, value)
-                addLog("تم إرسال القيمة عبر ${valueSent.via}")
-                val valueEcho = TelegramWeb.waitFor(view, 15_000L) { snapshot ->
-                    snapshot.messages.any { it.outgoing && it.text.trim() == value && it.key !in beforeReply }
+                addLog("تم إرسال القيمة عبر ${valueSent.via}.")
+                val valueEcho = TelegramWeb.waitFor(view, 20_000L) { snapshot ->
+                    snapshot.messages.any {
+                        it.outgoing && it.text.trim() == value && it.key !in beforeValue
+                    }
                 }
                 if (valueEcho == null) {
-                    throw IllegalStateException("لم يظهر تأكيد إرسال القيمة في سجل المحادثة. لم نتابع انتظار الرد حتى لا ننسب رداً غير مرتبط بالطلب.")
+                    throw IllegalStateException("لم يظهر تأكيد إرسال القيمة في سجل الرسائل؛ لم ننسب أي رد إلى هذا الطلب.")
                 }
 
                 addLog("جمع استجابة المصدر…")
-                val reply = collectReply(view, beforeReply, promptText)
+                val reply = collectReply(view, beforeValue, promptText)
                 if (reply.isBlank()) {
-                    val diag = runCatching { TelegramWeb.diagnostics(view) }.getOrNull()
-                    diagnostics = diag?.summary()?.replace("web.telegram.org", "جلسة المصدر")
-                    throw IllegalStateException("لم تصل استجابة نصية خلال المهلة. قد تكون النتيجة صورة أو ملفاً، أو ما زال المصدر يعالج الطلب. راجع التشخيص.")
+                    diagnostics = runCatching { TelegramWeb.diagnostics(view) }
+                        .getOrNull()?.summary()?.replace("web.telegram.org", "جلسة المصدر")
+                    throw IllegalStateException("لم تصل استجابة نصية خلال 90 ثانية. قد تكون النتيجة وسائط أو أن المصدر لم يرد. راجع التشخيص.")
                 }
+
                 result = reply
                 status = "اكتمل الطلب. النتيجة من ${bot.name}."
                 addLog("تم جمع ${reply.length} حرفاً.")
                 if (saveReplies) {
                     withContext(Dispatchers.IO) {
-                        runCatching {
-                            val node = store.upsertEntity(
-                                value = value,
-                                kind = "PRIVATE_SOURCE_LOOKUP@${bot.id}",
-                                source = "مصدر خاص · ${bot.name}",
-                                confidence = 55
-                            )
-                            store.addFinding(
-                                entityId = node,
-                                title = "رد ${bot.name}",
-                                detail = reply,
-                                source = "مصدر خاص · ${bot.name}",
-                                severity = "info"
-                            )
-                        }
+                        val node = store.upsertEntity(
+                            value = value,
+                            kind = "PRIVATE_SOURCE_LOOKUP@@" + bot.id,
+                            source = "مصدر خاص · ${bot.name}",
+                            confidence = 55
+                        )
+                        store.addFinding(
+                            entityId = node,
+                            title = "رد ${bot.name}",
+                            detail = reply,
+                            source = "مصدر خاص · ${bot.name}",
+                            severity = "info"
+                        )
                     }
                     onSaved()
                 }
@@ -204,7 +215,8 @@ fun PrivateSearchPanel(store: LocalStore, onSaved: () -> Unit) {
                 throw cancelled
             } catch (error: Exception) {
                 status = error.message ?: "تعذر إكمال الطلب."
-                diagnostics = runCatching { TelegramWeb.diagnostics(view) }.getOrNull()?.summary()?.replace("web.telegram.org", "جلسة المصدر")
+                diagnostics = runCatching { TelegramWeb.diagnostics(view) }
+                    .getOrNull()?.summary()?.replace("web.telegram.org", "جلسة المصدر")
                 addLog("فشل: ${error.message}")
             } finally {
                 busy = false
@@ -250,22 +262,18 @@ fun PrivateSearchPanel(store: LocalStore, onSaved: () -> Unit) {
                     }
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
-                    if (selectedBot?.numberCommand?.isNotBlank() == true) {
-                        ModeChip(
-                            selected = kind == PrivateSourceKind.NUMBER,
-                            label = "رقم",
-                            onClick = { kind = PrivateSourceKind.NUMBER },
-                            modifier = Modifier.weight(1f)
-                        )
-                    }
-                    if (selectedBot?.nameCommand?.isNotBlank() == true) {
-                        ModeChip(
-                            selected = kind == PrivateSourceKind.NAME,
-                            label = "اسم",
-                            onClick = { kind = PrivateSourceKind.NAME },
-                            modifier = Modifier.weight(1f)
-                        )
-                    }
+                    ModeChip(
+                        selected = kind == PrivateSourceKind.NUMBER,
+                        label = "رقم",
+                        onClick = { kind = PrivateSourceKind.NUMBER },
+                        modifier = Modifier.weight(1f)
+                    )
+                    ModeChip(
+                        selected = kind == PrivateSourceKind.NAME,
+                        label = "اسم",
+                        onClick = { kind = PrivateSourceKind.NAME },
+                        modifier = Modifier.weight(1f)
+                    )
                 }
                 IntelField(
                     value = query,
@@ -273,11 +281,10 @@ fun PrivateSearchPanel(store: LocalStore, onSaved: () -> Unit) {
                     label = if (kind == PrivateSourceKind.NUMBER) "القيمة الرقمية" else "الاسم",
                     placeholder = if (kind == PrivateSourceKind.NUMBER) "+967…" else "الاسم الكامل"
                 )
-                ToggleRow(
-                    checked = directSend,
-                    onCheckedChange = { directSend = it },
-                    title = "إرسال القيمة مباشرة",
-                    detail = "يرسل الأمر ثم القيمة مباشرة دون انتظار مطالبة. استخدمه فقط عندما لا يطلب المصدر قيمة منفصلة."
+                NoteBlock(
+                    "نمط هذا البحث: ${selectedBot?.flow(kind)?.label() ?: "غير محدد"}. غيّره من إعدادات المصادر الخاصة.",
+                    IntelColors.Violet,
+                    "REQUEST FLOW"
                 )
                 ToggleRow(
                     checked = saveReplies,
@@ -291,7 +298,7 @@ fun PrivateSearchPanel(store: LocalStore, onSaved: () -> Unit) {
                     modifier = Modifier.fillMaxWidth(),
                     icon = Icons.Filled.Send,
                     loading = busy,
-                    enabled = !busy && selectedBot != null && query.isNotBlank()
+                    enabled = !busy && selectedBot != null && query.isNotBlank() && webView != null
                 )
                 Text(
                     status,
@@ -302,36 +309,22 @@ fun PrivateSearchPanel(store: LocalStore, onSaved: () -> Unit) {
             }
         }
 
-        SectionBar("02", "جلسة المصدر", "SESSION")
-        IntelPanel(contentPadding = 8) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-                Icon(Icons.Filled.Public, contentDescription = null, tint = IntelColors.Signal, modifier = Modifier.size(14.dp))
-                MicroLabel("PRIVATE SESSION · تسجيل الدخول يتم هنا مرة واحدة", IntelColors.TextFaint)
-            }
-            Surface(
-                modifier = Modifier.fillMaxWidth().height(300.dp),
-                shape = RoundedCornerShape(2.dp),
-                border = BorderStroke(1.dp, IntelColors.HairlineStrong),
-                color = IntelColors.Void
-            ) {
-                AndroidView(
-                    modifier = Modifier.fillMaxWidth().height(300.dp),
-                    factory = { webContext ->
-                        SessionWebView(webContext).apply {
-                            TelegramWeb.configure(this)
-                            webView = this
-                        }
-                    },
-                    update = { view ->
-                        if (webView !== view) webView = view
-                    }
-                )
-            }
-            Text(
-                "هذه نافذة الجلسة التي يستخدمها تنفيذ المصادر الخاصة. أكمل تسجيل الدخول فيها مرة واحدة واتركها جاهزة أثناء تنفيذ الطلبات.",
-                fontSize = 9.sp,
-                color = IntelColors.TextFaint,
-                lineHeight = 13.sp
+        if (webView == null) {
+            NoteBlock(
+                "لم تُهيأ جلسة المصدر بعد. افتح الإعدادات ← إعدادات المصادر الخاصة ← نافذة الجلسة، ثم سجّل الدخول مرة واحدة.",
+                IntelColors.Amber,
+                "SESSION REQUIRED"
+            )
+            GhostButton(
+                text = "فتح إعدادات الجلسة",
+                onClick = onOpenSettings,
+                accent = IntelColors.Signal
+            )
+        } else {
+            NoteBlock(
+                "جلسة المصدر التي أعددتها من الإعدادات متاحة لمحرك البحث.",
+                IntelColors.Signal,
+                "SESSION READY"
             )
         }
 
