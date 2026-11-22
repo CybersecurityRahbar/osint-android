@@ -262,8 +262,13 @@ class MultiSourceNewsEngine(private val appContext: Context? = null) {
         runCatching { return java.time.OffsetDateTime.parse(value).toInstant().toEpochMilli() }
         runCatching { return java.time.ZonedDateTime.parse(value, RFC_1123_DATE_TIME).toInstant().toEpochMilli() }
         runCatching {
-            val format = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss Z", Locale.US)
-            return format.parse(value, Instant::from).toEpochMilli()
+            val parser = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss Z", Locale.US).apply {
+                isLenient = false
+                timeZone = java.util.TimeZone.getTimeZone("UTC")
+            }
+            val position = java.text.ParsePosition(0)
+            val parsed = parser.parse(value, position)
+            if (parsed != null && position.index == value.length) return parsed.time
         }
         runCatching {
             val format = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss", Locale.US)
