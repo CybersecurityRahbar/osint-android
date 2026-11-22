@@ -31,10 +31,46 @@ class UsernameEnumerationEngineTest {
     }
 
     @Test
-    fun `200 without the identity marker is not counted as found`() {
+    fun `ambiguous HTTP 200 is unknown, never a false not-found result`() {
         val hit = engine.classify(github, "https://api.github.com/users/octocat", 200, """{"message":"Not Found"}""")
-        assertEquals(ProbeStatus.NOT_FOUND, hit.status)
+        assertEquals(ProbeStatus.UNKNOWN, hit.status)
         assertFalse(hit.found)
+    }
+
+    @Test
+    fun `sign-in pages are not treated as missing Instagram accounts`() {
+        val instagram = PlatformProbe(
+            "Instagram",
+            "مجتمع",
+            "https://www.instagram.com/%s/",
+            ProbeKind.HTML,
+            negativeMarkers = listOf("Sorry, this page isn't available")
+        )
+        val hit = engine.classify(
+            instagram,
+            "https://www.instagram.com/example/",
+            200,
+            "<html>Log in to continue</html>"
+        )
+        assertEquals(ProbeStatus.UNKNOWN, hit.status)
+    }
+
+    @Test
+    fun `Bluesky resolver supports custom domain handles`() {
+        val bluesky = PlatformProbe(
+            "Bluesky",
+            "مجتمع",
+            "https://public.api.bsky.app/xrpc/com.atproto.identity.resolveHandle?handle=%s",
+            ProbeKind.BLUESKY
+        )
+        assertEquals(
+            "https://public.api.bsky.app/xrpc/com.atproto.identity.resolveHandle?handle=alice.bsky.social",
+            engine.buildProbeUrl(bluesky, "alice")
+        )
+        assertEquals(
+            "https://public.api.bsky.app/xrpc/com.atproto.identity.resolveHandle?handle=alice.example.net",
+            engine.buildProbeUrl(bluesky, "alice.example.net")
+        )
     }
 
     @Test
