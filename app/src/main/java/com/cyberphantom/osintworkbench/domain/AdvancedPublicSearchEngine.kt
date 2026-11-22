@@ -242,6 +242,7 @@ class AdvancedPublicSearchEngine {
         val images = allResults.filter { !it.imageUrl.isNullOrBlank() }
             .sortedWith(compareByDescending<PublicProfileResult> { it.relevanceScore }.thenByDescending { it.confidence })
         val pages = allResults.filter { it.imageUrl.isNullOrBlank() }
+            .filter { kind != IdentifierKind.NAME || query.trim().split(Regex("\\s+")).size < 2 || it.relevanceScore >= 30 }
             .sortedWith(compareByDescending<PublicProfileResult> { it.relevanceScore }.thenByDescending { it.confidence })
         val imageSlots = minOf(images.size, if (includeImages) maxOf(4, limit / 3) else 0)
         val merged = (pages.take(limit - imageSlots) + images.take(imageSlots))
@@ -561,8 +562,9 @@ class AdvancedPublicSearchEngine {
         val decodedUrl = runCatching {
             URLDecoder.decode(result.url, StandardCharsets.UTF_8.name())
         }.getOrDefault(result.url)
+        // A username in a paragraph may be a casual mention, not the account.
+        // Accept a token in the result title or destination URL only.
         return containsExactIdentifierToken(result.title, needle) ||
-            containsExactIdentifierToken(result.description, needle) ||
             containsExactIdentifierToken(decodedUrl, needle)
     }
 
