@@ -148,7 +148,7 @@ class ExternalApiSearchClient(private val settings: ApiProviderSettingsStore) {
                 body = JSONObject()
                     .put("query", query)
                     .put("limit", limit)
-                    .put("sources", JSONArray().put("web"))
+                    .put("sources", JSONArray().put(JSONObject().put("type", "web")))
             )
             ApiProviderId.EXA -> requestJson(
                 "https://api.exa.ai/search",
