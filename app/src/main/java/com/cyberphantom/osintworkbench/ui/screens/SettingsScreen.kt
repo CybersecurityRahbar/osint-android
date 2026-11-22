@@ -40,7 +40,7 @@ fun SettingsScreen(stats: StoreStats, store: LocalStore, dataVersion: Int, onDat
             StatTile("SCANS", stats.scans.toString(), IntelColors.Blue, Modifier.weight(1f))
         }
 
-        PrivateSourcesSettings()
+        PrivateSourcesSettings(store, onDataChanged)
 
         SectionBar("02", "إدارة البيانات", "LOCAL")
         DataSection(store = store, dataVersion = dataVersion, onDataChanged = onDataChanged)
