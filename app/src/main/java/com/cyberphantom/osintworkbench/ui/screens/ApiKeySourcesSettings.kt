@@ -283,6 +283,7 @@ private fun ProviderKeyEditor(
 ) {
     var enabled by remember(info.id) { mutableStateOf(store.isEnabled(info.id)) }
     var revealKeys by remember(info.id) { mutableStateOf(false) }
+    var saveError by remember(info.id) { mutableStateOf<String?>(null) }
     val drafts = remember(info.id) { mutableStateListOf("", "", "") }
     val storedKeys = remember(info.id) {
         mutableStateListOf(
@@ -356,9 +357,13 @@ private fun ProviderKeyEditor(
                     GhostButton(
                         text = "حفظ المفتاح",
                         onClick = {
-                            store.saveKey(info.id, slot, drafts[index])
-                            drafts[index] = ""
-                            storedKeys[index] = true
+                            runCatching { store.saveKey(info.id, slot, drafts[index]) }
+                                .onSuccess {
+                                    drafts[index] = ""
+                                    storedKeys[index] = true
+                                    saveError = null
+                                }
+                                .onFailure { saveError = "تعذر تشفير المفتاح وحفظه محلياً: " + (it.message ?: "خطأ غير معروف") }
                         },
                         enabled = drafts[index].isNotBlank(),
                         accent = IntelColors.Green,
@@ -378,6 +383,7 @@ private fun ProviderKeyEditor(
                 }
             }
         }
+        saveError?.let { NoteBlock(it, IntelColors.Red, "SAVE ERROR") }
         GhostButton(
             text = if (revealKeys) "إخفاء المفاتيح أثناء الكتابة" else "إظهار النص أثناء الكتابة",
             onClick = { revealKeys = !revealKeys },

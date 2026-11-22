@@ -463,7 +463,7 @@ private suspend fun <T> callWithKeyFallback(
             return ProviderCall.Success(result)
         } catch (error: ApiProviderHttpException) {
             lastStatus = error.status
-            if (error.status !in setOf(401, 402, 403, 429)) {
+            if (error.status !in setOf(401, 402, 403, 429, 432)) {
                 return ProviderCall.Failure("رفض المزود الطلب (HTTP " + error.status + "). راجع إعدادات المصدر والاستعلام.")
             }
         } catch (error: Exception) {
@@ -559,7 +559,7 @@ private fun detectLogicalError(provider: ApiProviderId, root: JSONObject) {
     if (error.isBlank()) return
     val lower = error.lowercase(Locale.ROOT)
     val status = when {
-        lower.contains("quota") || lower.contains("limit") || lower.contains("credit") || lower.contains("rate") -> 429
+        lower.contains("quota") || lower.contains("limit") || lower.contains("credit") || lower.contains("rate") || lower.contains("allowance") || lower.contains("exceed") || lower.contains("run out") -> 429
         lower.contains("api key") || lower.contains("token") || lower.contains("unauthorized") || lower.contains("authentication") -> 401
         else -> 502
     }
@@ -614,7 +614,13 @@ private fun canonicalUrl(value: String): String = value
     .removeSuffix("/")
     .lowercase(Locale.ROOT)
 
-private fun safeErrorMessage(error: Exception): String = when (error) {
-    is ApiProviderHttpException -> error.message.orEmpty()
-    else -> error.message?.take(160)?.takeIf(String::isNotBlank) ?: "خطأ شبكة غير معروف"
+private fun safeErrorMessage(error: Exception): String {
+    val raw = when (error) {
+        is ApiProviderHttpException -> error.message.orEmpty()
+        else -> error.message?.take(160)?.takeIf(String::isNotBlank) ?: "خطأ شبكة غير معروف"
+    }
+    return raw.replace(
+        Regex("(?i)(api_key|api_token|apikey)=([^&\\s]+)"),
+        "$1=[redacted]"
+    )
 }
