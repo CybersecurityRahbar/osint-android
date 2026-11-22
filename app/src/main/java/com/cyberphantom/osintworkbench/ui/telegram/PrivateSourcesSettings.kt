@@ -95,7 +95,7 @@ fun PrivateSourcesSettings(localStore: LocalStore, onSaved: () -> Unit) {
             IntelPanel {
                 MicroLabel("PRIVATE SOURCE REGISTRY", IntelColors.Violet)
                 Text(
-                    "أضف مصادر البحث وحدد أوامر البحث ونص المطالبة المتوقع لكل نوع. تُستخدم هذه الإعدادات في محرك التنفيذ التلقائي داخل تبويب الجلسة.",
+                    "أضف مصادر البحث واضبط طريقة إرسال الرقم والاسم بشكل مستقل. يمكن اختيار أمر ومطالبة أو إرسال القيمة مباشرة دون أمر.",
                     fontSize = 9.sp,
                     color = IntelColors.TextFaint,
                     lineHeight = 14.sp
@@ -153,7 +153,7 @@ fun PrivateSourcesSettings(localStore: LocalStore, onSaved: () -> Unit) {
                             )
                         }
                         DataText(
-                            "رقم: ${source.numberCommand.ifBlank { "—" }} · اسم: ${source.nameCommand.ifBlank { "—" }}",
+                            "رقم: ${source.numberFlow.label()} · اسم: ${source.nameFlow.label()}",
                             IntelColors.TextFaint,
                             size = 8,
                             maxLines = 2
