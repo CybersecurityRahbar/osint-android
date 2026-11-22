@@ -69,7 +69,7 @@ internal class BroadPublicSearchAdapter {
             if (allWeb.isEmpty()) add("لم تُستخرج صفحات ويب من المصادر التي أمكن الوصول إليها. قد تكون المصادر محجوبة أو تغير قالبها؛ النتيجة الصفرية لا تثبت غياب المعلومات.")
             if (includeImages && images.results.isEmpty()) add("لم تُرجع مصادر الصور روابط صور قابلة للعرض في هذا البحث.")
         }.distinct()
-        return Outcome(merged, warnings, attempts.size + if (includeImages) 3 else 0)
+        return Outcome(merged, warnings, attempts.size + if (includeImages) 4 else 0)
     }
 
     private fun providers(query: String, primary: Boolean): List<Provider> {
