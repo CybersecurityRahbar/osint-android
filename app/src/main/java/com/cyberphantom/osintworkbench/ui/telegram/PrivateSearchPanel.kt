@@ -228,7 +228,7 @@ fun PrivateSearchPanel(store: LocalStore, onSaved: () -> Unit, onOpenSettings: (
         SectionBar("01", "المصادر الخاصة", if (bots.isEmpty()) "غير مضبوط" else "${bots.size} مصدر")
         if (bots.isEmpty()) {
             NoteBlock(
-                "لا توجد مصادر مضبوطة. أضف بيانات المصدر وأوامر البحث من تبويب الإعدادات ثم ابدأ التنفيذ.",
+                "لا توجد مصادر مضبوطة. أضف مصدراً واختر طريقة الإرسال من الإعدادات، ثم ابدأ البحث هنا.",
                 IntelColors.Amber,
                 "SETUP"
             )
@@ -247,9 +247,7 @@ fun PrivateSearchPanel(store: LocalStore, onSaved: () -> Unit, onOpenSettings: (
                                 selectedBotId = bot.id
                                 result = null
                                 diagnostics = null
-                                if (bot.command(kind).isBlank()) {
-                                    kind = if (bot.numberCommand.isNotBlank()) PrivateSourceKind.NUMBER else PrivateSourceKind.NAME
-                                }
+                                // The configured flow may intentionally be VALUE_ONLY with no command.
                             },
                             accent = IntelColors.Violet
                         )
