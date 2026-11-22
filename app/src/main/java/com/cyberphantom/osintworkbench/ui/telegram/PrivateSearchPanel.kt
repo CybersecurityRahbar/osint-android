@@ -100,7 +100,7 @@ fun PrivateSearchPanel(store: LocalStore, onSaved: () -> Unit) {
         val bot = selectedBot ?: return
         val view = webView
         if (view == null) {
-            status = "نافذة Telegram لم تجهز بعد. انتظر ثانية ثم أعد المحاولة."
+            status = "نافذة جلسة المصدر لم تجهز بعد. انتظر ثانية ثم أعد المحاولة."
             return
         }
         if (query.isBlank()) {
@@ -109,7 +109,7 @@ fun PrivateSearchPanel(store: LocalStore, onSaved: () -> Unit) {
         }
         val command = bot.command(kind).trim()
         if (command.isBlank()) {
-            status = "هذا النوع غير مضبوط لهذا البوت. راجع إعدادات المصادر الخاصة."
+            status = "هذا النوع غير مضبوط لهذا المصدر. راجع إعدادات المصادر الخاصة."
             return
         }
         val value = query.trim()
@@ -120,12 +120,12 @@ fun PrivateSearchPanel(store: LocalStore, onSaved: () -> Unit) {
         log = emptyList()
         scope.launch {
             try {
-                addLog("الهدف: ${bot.name} · @${bot.username}")
+                addLog("المصدر المحدد: ${bot.name}")
                 val opened = TelegramWeb.openChat(view, bot.username) { addLog(it) }
                 if (!TelegramWeb.chatMatches(opened, bot.username, bot.name)) {
-                    addLog("تحذير: تعذر تأكيد هوية المحادثة من العنوان، لكن المحرر جاهز. المتابعة.")
+                    throw IllegalStateException("تعذر التحقق من أن الجلسة تعرض المصدر المحدد. لم يتم إرسال أي طلب.")
                 }
-                addLog("المحادثة: ${opened.title.ifBlank { opened.url }}")
+                addLog("تم التحقق من نافذة المصدر.")
 
                 val beforeCommand = opened.messages.map { it.key }.toSet()
                 addLog("إرسال الأمر: $command")
@@ -135,11 +135,7 @@ fun PrivateSearchPanel(store: LocalStore, onSaved: () -> Unit) {
                     snapshot.messages.any { it.outgoing && it.text.trim() == command && it.key !in beforeCommand }
                 }
                 if (echo == null) {
-                    val now = TelegramWeb.snapshot(view)
-                    if (now.editorText.trim() == command) {
-                        throw IllegalStateException("لم يُرسل الأمر: النص ما زال في المحرر. افتح نافذة Telegram وتحقق من حالة الاتصال.")
-                    }
-                    addLog("لم يُرصد صدى الأمر، لكن المحرر أُفرغ — أعتبره مرسلاً.")
+                    throw IllegalStateException("لم يظهر تأكيد إرسال الأمر في سجل المحادثة. أوقفنا التنفيذ لتجنب إرسال القيمة إلى محادثة غير مؤكدة.")
                 }
 
                 val beforeValue = TelegramWeb.snapshot(view).messages.map { it.key }.toSet()
@@ -156,8 +152,7 @@ fun PrivateSearchPanel(store: LocalStore, onSaved: () -> Unit) {
                         }
                     }
                     if (prompt == null) {
-                        addLog("لم تُطابق المطالبة العبارة المضبوطة ولا الكلمات المفتاحية. سأرسل القيمة بعد مهلة قصيرة.")
-                        delay(1_500L)
+                        throw IllegalStateException("لم تصل مطالبة واضحة من المصدر. راجع نص المطالبة في إعداد المصدر أو فعّل خيار الإرسال المباشر إذا كان المصدر لا يطلب القيمة.")
                     } else {
                         promptText = prompt.messages.lastOrNull { !it.outgoing && it.key !in beforeValue }?.text
                         addLog("وصلت المطالبة: ${promptText?.take(80)}")
@@ -172,30 +167,26 @@ fun PrivateSearchPanel(store: LocalStore, onSaved: () -> Unit) {
                     snapshot.messages.any { it.outgoing && it.text.trim() == value && it.key !in beforeReply }
                 }
                 if (valueEcho == null) {
-                    val now = TelegramWeb.snapshot(view)
-                    if (now.editorText.trim() == value) {
-                        throw IllegalStateException("لم تُرسل القيمة: النص ما زال في المحرر.")
-                    }
-                    addLog("لم يُرصد صدى القيمة، لكن المحرر أُفرغ — أعتبره مرسلاً.")
+                    throw IllegalStateException("لم يظهر تأكيد إرسال القيمة في سجل المحادثة. لم نتابع انتظار الرد حتى لا ننسب رداً غير مرتبط بالطلب.")
                 }
 
-                addLog("جمع رد البوت…")
+                addLog("جمع استجابة المصدر…")
                 val reply = collectReply(view, beforeReply, promptText)
                 if (reply.isBlank()) {
                     val diag = runCatching { TelegramWeb.diagnostics(view) }.getOrNull()
-                    diagnostics = diag?.summary()
-                    throw IllegalStateException("لم يصل نص من البوت خلال المهلة. قد يكون الرد صورة أو ملفاً، أو أن البوت مشغول. راجع التشخيص.")
+                    diagnostics = diag?.summary()?.replace("web.telegram.org", "جلسة المصدر")
+                    throw IllegalStateException("لم تصل استجابة نصية خلال المهلة. قد تكون النتيجة صورة أو ملفاً، أو ما زال المصدر يعالج الطلب. راجع التشخيص.")
                 }
                 result = reply
-                status = "اكتمل الطلب. الرد من ${bot.name}."
+                status = "اكتمل الطلب. النتيجة من ${bot.name}."
                 addLog("تم جمع ${reply.length} حرفاً.")
                 if (saveReplies) {
                     withContext(Dispatchers.IO) {
                         runCatching {
                             val node = store.upsertEntity(
                                 value = value,
-                                kind = "PRIVATE_SOURCE_LOOKUP@${bot.username}",
-                                source = "Telegram @${bot.username}",
+                                kind = "PRIVATE_SOURCE_LOOKUP@${bot.id}",
+                                source = "مصدر خاص · ${bot.name}",
                                 confidence = 55
                             )
                             store.addFinding(
@@ -213,7 +204,7 @@ fun PrivateSearchPanel(store: LocalStore, onSaved: () -> Unit) {
                 throw cancelled
             } catch (error: Exception) {
                 status = error.message ?: "تعذر إكمال الطلب."
-                diagnostics = runCatching { TelegramWeb.diagnostics(view) }.getOrNull()?.summary()
+                diagnostics = runCatching { TelegramWeb.diagnostics(view) }.getOrNull()?.summary()?.replace("web.telegram.org", "جلسة المصدر")
                 addLog("فشل: ${error.message}")
             } finally {
                 busy = false
@@ -222,16 +213,16 @@ fun PrivateSearchPanel(store: LocalStore, onSaved: () -> Unit) {
     }
 
     ScreenBlock {
-        SectionBar("01", "المصادر الخاصة", if (bots.isEmpty()) "غير مضبوط" else "${bots.size} بوت")
+        SectionBar("01", "المصادر الخاصة", if (bots.isEmpty()) "غير مضبوط" else "${bots.size} مصدر")
         if (bots.isEmpty()) {
             NoteBlock(
-                "لا توجد بوتات. من الإعدادات ← المصادر الخاصة أضف بوتاً واسم المستخدم والأوامر ثم عد هنا.",
+                "لا توجد مصادر مضبوطة. أضف بيانات المصدر وأوامر البحث من تبويب الإعدادات ثم ابدأ التنفيذ.",
                 IntelColors.Amber,
                 "SETUP"
             )
         } else {
             IntelPanel {
-                MicroLabel("SOURCE SELECT", IntelColors.Violet)
+                MicroLabel("PRIVATE SOURCE SELECT", IntelColors.Violet)
                 Row(
                     modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
                     horizontalArrangement = Arrangement.spacedBy(5.dp)
@@ -254,16 +245,9 @@ fun PrivateSearchPanel(store: LocalStore, onSaved: () -> Unit) {
                 }
                 selectedBot?.let { bot ->
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-                        Pill("@" + bot.username, IntelColors.Violet)
-                        MicroLabel(
-                            when (kind) {
-                                PrivateSourceKind.NUMBER -> bot.numberCommand.ifBlank { "—" }
-                                PrivateSourceKind.NAME -> bot.nameCommand.ifBlank { "—" }
-                            },
-                            IntelColors.TextFaint
-                        )
+                        Pill(if (kind == PrivateSourceKind.NUMBER) "بحث رقمي" else "بحث بالاسم", IntelColors.Violet)
+                        MicroLabel("مصدر: " + bot.name, IntelColors.TextFaint)
                     }
-                }
                 Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
                     if (selectedBot?.numberCommand?.isNotBlank() == true) {
                         ModeChip(
@@ -298,7 +282,7 @@ fun PrivateSearchPanel(store: LocalStore, onSaved: () -> Unit) {
                     checked = saveReplies,
                     onCheckedChange = { saveReplies = it },
                     title = "حفظ الرد في قاعدة الأدلة",
-                    detail = "يُسجَّل الرد مرتبطاً بالقيمة ومصدره @${selectedBot?.username ?: "bot"}."
+                    detail = "يُسجَّل الرد مرتبطاً بالقيمة واسم المصدر المختار."
                 )
                 ActionButton(
                     text = "تنفيذ الطلب التلقائي",
@@ -317,11 +301,11 @@ fun PrivateSearchPanel(store: LocalStore, onSaved: () -> Unit) {
             }
         }
 
-        SectionBar("02", "نافذة Telegram الحية", "SESSION")
+        SectionBar("02", "جلسة المصدر", "SESSION")
         IntelPanel(contentPadding = 8) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(7.dp)) {
                 Icon(Icons.Filled.Public, contentDescription = null, tint = IntelColors.Signal, modifier = Modifier.size(14.dp))
-                MicroLabel("TELEGRAM WEB K · تسجيل الدخول يتم هنا مرة واحدة", IntelColors.TextFaint)
+                MicroLabel("PRIVATE SESSION · تسجيل الدخول يتم هنا مرة واحدة", IntelColors.TextFaint)
             }
             Surface(
                 modifier = Modifier.fillMaxWidth().height(300.dp),
@@ -332,7 +316,7 @@ fun PrivateSearchPanel(store: LocalStore, onSaved: () -> Unit) {
                 AndroidView(
                     modifier = Modifier.fillMaxWidth().height(300.dp),
                     factory = { webContext ->
-                        WebView(webContext).apply {
+                        SessionWebView(webContext).apply {
                             TelegramWeb.configure(this)
                             webView = this
                         }
@@ -343,7 +327,7 @@ fun PrivateSearchPanel(store: LocalStore, onSaved: () -> Unit) {
                 )
             }
             Text(
-                "هذه هي جلسة Telegram نفسها التي يستخدمها التطبيق. إن ظهرت شاشة دخول فأكملها هنا، ثم اتركها محمّلة.",
+                "هذه نافذة الجلسة التي يستخدمها تنفيذ المصادر الخاصة. أكمل تسجيل الدخول فيها مرة واحدة واتركها جاهزة أثناء تنفيذ الطلبات.",
                 fontSize = 9.sp,
                 color = IntelColors.TextFaint,
                 lineHeight = 13.sp
@@ -372,7 +356,7 @@ fun PrivateSearchPanel(store: LocalStore, onSaved: () -> Unit) {
         }
 
         result?.let { text ->
-            SectionBar("04", "نتيجة البوت", "OUTPUT")
+            SectionBar("04", "النتيجة", "OUTPUT")
             IntelPanel(accent = IntelColors.Green) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     MicroLabel("CAPTURED REPLY", IntelColors.Green)
@@ -412,7 +396,7 @@ private suspend fun collectReply(
 ): String {
     val captured = linkedMapOf<String, String>()
     var lastNewAt = 0L
-    val deadline = android.os.SystemClock.elapsedRealtime() + 60_000L
+    val deadline = android.os.SystemClock.elapsedRealtime() + 90_000L
     while (android.os.SystemClock.elapsedRealtime() < deadline) {
         val snapshot = runCatching { TelegramWeb.snapshot(view) }.getOrElse { break }
         snapshot.messages
@@ -426,7 +410,7 @@ private suspend fun collectReply(
                     lastNewAt = android.os.SystemClock.elapsedRealtime()
                 }
             }
-        if (captured.isNotEmpty() && android.os.SystemClock.elapsedRealtime() - lastNewAt >= 2_500L) break
+        if (captured.isNotEmpty() && android.os.SystemClock.elapsedRealtime() - lastNewAt >= 4_000L && android.os.SystemClock.elapsedRealtime() - lastNewAt >= 8_000L) break
         delay(700L)
     }
     return captured.values.take(20).joinToString("\n\n").trim()
