@@ -8,6 +8,23 @@ import java.text.Normalizer
 
 enum class PrivateSourceKind { NUMBER, NAME }
 
+enum class PrivateSourceFlow {
+    COMMAND_AND_PROMPT,
+    COMMAND_THEN_VALUE,
+    VALUE_ONLY;
+
+    companion object {
+        fun fromStored(value: String?, fallback: PrivateSourceFlow = COMMAND_AND_PROMPT): PrivateSourceFlow =
+            entries.firstOrNull { it.name.equals(value?.trim(), ignoreCase = true) } ?: fallback
+    }
+
+    fun label(): String = when (this) {
+        COMMAND_AND_PROMPT -> "أمر ثم مطالبة"
+        COMMAND_THEN_VALUE -> "أمر ثم قيمة"
+        VALUE_ONLY -> "إرسال القيمة فقط"
+    }
+}
+
 data class PrivateSourceBot(
     val id: String,
     val name: String,
@@ -15,13 +32,18 @@ data class PrivateSourceBot(
     val numberCommand: String,
     val nameCommand: String,
     val numberPrompt: String,
-    val namePrompt: String
+    val namePrompt: String,
+    val numberFlow: PrivateSourceFlow = PrivateSourceFlow.COMMAND_AND_PROMPT,
+    val nameFlow: PrivateSourceFlow = PrivateSourceFlow.COMMAND_AND_PROMPT
 ) {
     fun command(kind: PrivateSourceKind): String =
         if (kind == PrivateSourceKind.NUMBER) numberCommand else nameCommand
 
     fun prompt(kind: PrivateSourceKind): String =
         if (kind == PrivateSourceKind.NUMBER) numberPrompt else namePrompt
+
+    fun flow(kind: PrivateSourceKind): PrivateSourceFlow =
+        if (kind == PrivateSourceKind.NUMBER) numberFlow else nameFlow
 }
 
 /**
@@ -69,7 +91,9 @@ class PrivateSourcesStore(context: Context) {
                             numberCommand = item.optString("numberCommand").trim(),
                             nameCommand = item.optString("nameCommand").trim(),
                             numberPrompt = item.optString("numberPrompt").ifBlank { "الرجاء ارسال الرقم" },
-                            namePrompt = item.optString("namePrompt").ifBlank { "الرجاء ارسال الاسم" }
+                            namePrompt = item.optString("namePrompt").ifBlank { "الرجاء ارسال الاسم" },
+                            numberFlow = PrivateSourceFlow.fromStored(item.optString("numberFlow")),
+                            nameFlow = PrivateSourceFlow.fromStored(item.optString("nameFlow"))
                         )
                     )
                 }
@@ -90,6 +114,8 @@ class PrivateSourcesStore(context: Context) {
                     .put("nameCommand", bot.nameCommand.trim())
                     .put("numberPrompt", bot.numberPrompt.trim())
                     .put("namePrompt", bot.namePrompt.trim())
+                    .put("numberFlow", bot.numberFlow.name)
+                    .put("nameFlow", bot.nameFlow.name)
             )
         }
         preferences.edit().putString(KEY_BOTS, array.toString()).apply()
