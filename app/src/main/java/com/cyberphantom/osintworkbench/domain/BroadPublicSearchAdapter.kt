@@ -24,7 +24,7 @@ internal class BroadPublicSearchAdapter {
     private data class ImageBatch(val results: List<PublicProfileResult>, val warnings: List<String>)
 
     suspend fun search(queries: List<String>, maxResults: Int, includeImages: Boolean): Outcome {
-        val terms = queries.map(String::trim).filter(String::isNotBlank).distinct().take(4)
+        val terms = queries.map(String::trim).filter(String::isNotBlank).distinct().take(6)
         if (terms.isEmpty()) return Outcome(emptyList(), listOf("لا توجد عبارة صالحة للبحث."), 0)
         val limit = maxResults.coerceIn(10, 80)
         val semaphore = Semaphore(8)
