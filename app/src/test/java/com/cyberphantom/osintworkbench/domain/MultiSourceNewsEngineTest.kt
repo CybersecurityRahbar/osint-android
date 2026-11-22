@@ -203,6 +203,10 @@ class MultiSourceNewsEngineTest {
             java.time.Instant.parse("2026-11-22T12:30:00Z").toEpochMilli(),
             engine.parsePublishedMillis("2026-11-22 12:30:00")
         )
+        assertEquals(
+            java.time.Instant.parse("2026-11-22T12:30:00Z").toEpochMilli(),
+            engine.parsePublishedMillis("2026-11-22 12:30:00 +0000")
+        )
         assertNull(engine.parsePublishedMillis("date unknown"))
     }
 

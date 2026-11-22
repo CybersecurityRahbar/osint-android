@@ -104,7 +104,7 @@ class ExternalApiSearchClient(private val settings: ApiProviderSettingsStore) {
         query: String,
         limit: Int,
         includeImages: Boolean
-    ): List<PublicProfileResult> {
+    ): List<PublicProfileResult> = withContext(Dispatchers.IO) {
         val root = when (provider) {
             ApiProviderId.SERP_API -> {
                 val url = queryUrl(
@@ -310,7 +310,7 @@ class ExternalApiNewsClient(private val settings: ApiProviderSettingsStore) {
         query: String,
         limit: Int,
         includeImages: Boolean
-    ): List<NewsArticle> {
+    ): List<NewsArticle> = withContext(Dispatchers.IO) {
         val language = if (containsArabic(query)) "ar" else "en"
         val root = when (provider) {
             ApiProviderId.CURRENTS -> requestJson(

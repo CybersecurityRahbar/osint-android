@@ -260,6 +260,10 @@ class MultiSourceNewsEngine(private val appContext: Context? = null) {
         runCatching { return java.time.OffsetDateTime.parse(value).toInstant().toEpochMilli() }
         runCatching { return java.time.ZonedDateTime.parse(value, RFC_1123_DATE_TIME).toInstant().toEpochMilli() }
         runCatching {
+            val format = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss Z", Locale.US)
+            return format.parse(value, Instant::from).toEpochMilli()
+        }
+        runCatching {
             val format = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss", Locale.US)
             return LocalDateTime.parse(value, format).toInstant(ZoneOffset.UTC).toEpochMilli()
         }
