@@ -29,6 +29,7 @@ import androidx.compose.material.icons.filled.PersonSearch
 import androidx.compose.material.icons.filled.TravelExplore
 import androidx.compose.material.icons.filled.WarningAmber
 import androidx.compose.material3.Icon
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -48,6 +49,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import com.cyberphantom.osintworkbench.data.ApiProviderSettingsStore
 import com.cyberphantom.osintworkbench.data.LocalStore
 import com.cyberphantom.osintworkbench.ui.telegram.PrivateSearchPanel
 import com.cyberphantom.osintworkbench.domain.AdvancedPublicSearchEngine
@@ -89,6 +91,7 @@ import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
 import java.util.Locale
+import kotlin.math.roundToInt
 
 private enum class ResearchMode(val label: String) {
     IDENTIFIERS("المعرّفات"),
@@ -107,7 +110,9 @@ fun ResearchScreen(
     val context = LocalContext.current
     val uriHandler = LocalUriHandler.current
     val scope = rememberCoroutineScope()
+    val apiProviderSettings = remember(context) { ApiProviderSettingsStore(context) }
 
+    var externalSearchLimit by rememberSaveable { mutableStateOf(apiProviderSettings.searchRequestLimit()) }
     var mode by rememberSaveable { mutableStateOf(if (startInNews) ResearchMode.NEWS else ResearchMode.IDENTIFIERS) }
     var query by rememberSaveable { mutableStateOf(initialQuery) }
     var kind by rememberSaveable { mutableStateOf(IdentifierKind.NAME) }
@@ -258,7 +263,7 @@ fun ResearchScreen(
                                 error = null
                                 news = null
                                 try {
-                                    val result = MultiSourceNewsEngine().search(
+                                    val result = MultiSourceNewsEngine(context).search(
                                         query = query.trim(),
                                         maxRecords = 60,
                                         includeImages = includeImages,
@@ -357,6 +362,30 @@ fun ResearchScreen(
                         detail = "يبطئ الجمع قليلاً لكنه يفيد التحقق البصري من الحسابات والمواقع.",
                         accent = IntelColors.Violet
                     )
+                    SectionBar("API", "عدد طلبات البحث الخارجية", externalSearchLimit.toString() + " / 5", IntelColors.Violet)
+                    Text(
+                        "حدد الحد الأعلى لعدد مزودي API الذين سيُستعلم منهم في كل عملية بحث عن المعرّفات. كل مزود ينفذ طلباً أساسياً واحداً، وقد تُرسل طلبات إضافية فقط عند فشل المفتاح والانتقال للمفتاح البديل.",
+                        color = IntelColors.TextFaint,
+                        fontSize = 9.sp,
+                        lineHeight = 14.sp
+                    )
+                    Slider(
+                        value = externalSearchLimit.toFloat(),
+                        onValueChange = { selected ->
+                            val next = selected.roundToInt().coerceIn(1, 5)
+                            if (next != externalSearchLimit) {
+                                externalSearchLimit = next
+                                apiProviderSettings.setSearchRequestLimit(next)
+                            }
+                        },
+                        valueRange = 1f..5f,
+                        steps = 3
+                    )
+                    NoteBlock(
+                        "استعلام البحث (وقد يتضمن اسماً أو بريداً أو رقماً) سيُرسل إلى مزودي API الذين فعّلتهم وحفظت مفاتيحهم. عطّل أي مصدر لا تريد إرسال استعلاماتك إليه.",
+                        IntelColors.Amber,
+                        "EXTERNAL DATA"
+                    )
                     if (kind == IdentifierKind.USERNAME) {
                         ToggleRow(
                             checked = runUsernameScan,
@@ -382,7 +411,7 @@ fun ResearchScreen(
                                 usernameHits = emptyList()
                                 phoneMeta = null
                                 try {
-                                    val engine = AdvancedPublicSearchEngine()
+                                    val engine = AdvancedPublicSearchEngine(context)
                                     val result = engine.search(
                                         rawQuery = query.trim(),
                                         kind = kind,

@@ -1,5 +1,7 @@
 package com.cyberphantom.osintworkbench.domain
 
+import android.content.Context
+import com.cyberphantom.osintworkbench.data.ApiProviderSettingsStore
 import com.google.i18n.phonenumbers.PhoneNumberUtil
 import com.google.i18n.phonenumbers.Phonenumber
 import kotlinx.coroutines.CancellationException
@@ -34,7 +36,7 @@ data class PublicWebSearchResponse(
  * Google, and Yahoo instead of returning only manually curated links. It does not authenticate to,
  * crawl, or bypass access controls on social networks. Public result availability depends on each provider.
  */
-class AdvancedPublicSearchEngine {
+class AdvancedPublicSearchEngine(private val appContext: Context? = null) {
     fun buildSearchQueries(rawQuery: String, kind: IdentifierKind): List<String> {
         val query = rawQuery.trim()
         require(query.isNotBlank()) { "أدخل قيمة للبحث." }
@@ -212,7 +214,19 @@ class AdvancedPublicSearchEngine {
                 .getOrDefault(emptyList())
         } else emptyList()
 
-        val collectedResults = (broadOutcome.results + enrichment.results + instantResults)
+        val externalOutcome = appContext?.let { app ->
+            val providerSettings = ApiProviderSettingsStore(app)
+            ExternalApiSearchClient(providerSettings).search(
+                rawQuery = query,
+                kind = kind,
+                maxCalls = providerSettings.searchRequestLimit(),
+                maxResults = limit,
+                includeImages = includeImages,
+                onProgress = onProgress
+            )
+        } ?: ExternalSearchOutcome()
+
+        val collectedResults = (broadOutcome.results + enrichment.results + instantResults + externalOutcome.results)
             .filter { it.url.startsWith("https://") }
             .map { result ->
                 if (!result.imageUrl.isNullOrBlank()) {
@@ -252,6 +266,7 @@ class AdvancedPublicSearchEngine {
         val warnings = buildList {
             addAll(broadOutcome.warnings)
             addAll(enrichment.warnings)
+            addAll(externalOutcome.warnings)
             if (shouldTryInstantAnswer && instantResults.isEmpty()) {
                 add("لم يُرجع مصدر الإجابة الفورية نتائج إضافية؛ لا يؤثر ذلك في بقية الفهارس.")
             }
@@ -272,7 +287,7 @@ class AdvancedPublicSearchEngine {
             query = query,
             results = merged,
             warnings = warnings,
-            providersAttempted = broadOutcome.attempted + enrichment.attempted + if (shouldTryInstantAnswer) 1 else 0,
+            providersAttempted = broadOutcome.attempted + enrichment.attempted + externalOutcome.providersAttempted + if (shouldTryInstantAnswer) 1 else 0,
             elapsedMs = ((System.nanoTime() - started) / 1_000_000L).coerceAtLeast(0L)
         )
     }

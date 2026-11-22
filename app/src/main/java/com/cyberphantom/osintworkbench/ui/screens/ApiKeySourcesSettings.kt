@@ -173,7 +173,7 @@ fun ApiKeySourcesSettings() {
         }
         route == "home" -> {
             SectionBar("01", "إعداد مفاتيح المصادر الخاصة", "اختر الفئة", IntelColors.Violet)
-            GhostButton("رجوع إلى الإعدادات", { route = "closed" }, Icons.Filled.ArrowBack)
+            GhostButton("رجوع إلى الإعدادات", { route = "closed" }, icon = Icons.Filled.ArrowBack)
             CategoryCard(
                 title = "قسم مفاتيح البحث الشامل والتتبع",
                 detail = "SerpApi · Tavily · TinyFish · Firecrawl · Exa API",
@@ -204,7 +204,7 @@ fun ApiKeySourcesSettings() {
             val title = if (group == ApiProviderGroup.SEARCH) "قسم مفاتيح البحث الشامل والتتبع" else "قسم مفاتيح الأخبار والتقارير"
             val accent = if (group == ApiProviderGroup.SEARCH) IntelColors.Violet else IntelColors.Blue
             SectionBar("02", title, groupProviders.size.toString() + " مصادر", accent)
-            GhostButton("رجوع للفئتين", { route = "home" }, Icons.Filled.ArrowBack)
+            GhostButton("رجوع للفئتين", { route = "home" }, icon = Icons.Filled.ArrowBack)
             groupProviders.forEach { info ->
                 ProviderSummaryCard(
                     info = info,
@@ -293,7 +293,7 @@ private fun ProviderKeyEditor(
     }
 
     SectionBar("03", "إعداد " + info.name, "API KEY", if (info.id.group == ApiProviderGroup.SEARCH) IntelColors.Violet else IntelColors.Blue)
-    GhostButton("رجوع لقائمة المصادر", onBack, Icons.Filled.ArrowBack)
+    GhostButton("رجوع لقائمة المصادر", onBack, icon = Icons.Filled.ArrowBack)
     IntelPanel(accent = if (info.id.group == ApiProviderGroup.SEARCH) IntelColors.Violet else IntelColors.Blue) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {

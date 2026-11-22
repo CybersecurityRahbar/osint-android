@@ -1,5 +1,7 @@
 package com.cyberphantom.osintworkbench.domain
 
+import android.content.Context
+import com.cyberphantom.osintworkbench.data.ApiProviderSettingsStore
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -32,7 +34,7 @@ import org.w3c.dom.Element
  * publisher-scoped RSS feeds added for major international and Arabic-language outlets.
  * Each story retains its publisher label, source URL, publication time, and image URL when supplied.
  */
-class MultiSourceNewsEngine {
+class MultiSourceNewsEngine(private val appContext: Context? = null) {
     private data class DirectFeed(
         val name: String,
         val url: String,
@@ -173,6 +175,19 @@ class MultiSourceNewsEngine {
         }
         outcomes = outcomes + directOutcomes + publisherOutcomes
 
+        val externalNewsOutcome = appContext?.let { app ->
+            ExternalApiNewsClient(ApiProviderSettingsStore(app)).search(
+                rawQuery = clean,
+                maxResults = limit,
+                includeImages = includeImages,
+                onProgress = onProgress
+            )
+        } ?: ExternalNewsOutcome()
+        val externalOutcomes = externalNewsOutcome.sources.map { source ->
+            SourceOutcome(source.provider, source.articles, source.error)
+        }
+        outcomes = outcomes + externalOutcomes
+
         onProgress("فلترة التواريخ وإزالة المقالات المكررة…")
         val rawArticles = outcomes.flatMap { it.articles }
             .filter { it.title.isNotBlank() && it.url.startsWith("https://") }
@@ -204,6 +219,7 @@ class MultiSourceNewsEngine {
         val emptySources = outcomes.filter { it.error == null && it.articles.isEmpty() }.map { it.source }
         val failureText = failed.take(6).joinToString(" · ") { it.source + ": " + it.error }
         val warnings = buildList {
+            addAll(externalNewsOutcome.warnings)
             if (hasRange && !apiWindowSupported) {
                 add("نطاق GDELT للأخبار الحديثة محدود بآخر ثلاثة أشهر؛ جرى تخطي هذا المزود للفترة القديمة مع استمرار بقية المصادر.")
             }

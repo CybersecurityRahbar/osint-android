@@ -29,7 +29,7 @@ fun SettingsScreen(stats: StoreStats, store: LocalStore, dataVersion: Int, onDat
         ScreenLead(
             code = "MODULE 06 / SYSTEM",
             title = "الإعدادات",
-            subtitle = "المصادر الخاصة، النسخ الاحتياطي، وحدود الاستخدام",
+            subtitle = "مفاتيح مزودي البحث والأخبار، المصادر الخاصة، وإدارة البيانات",
             icon = Icons.Filled.Settings,
             accent = IntelColors.TextDim
         )
@@ -40,12 +40,15 @@ fun SettingsScreen(stats: StoreStats, store: LocalStore, dataVersion: Int, onDat
             StatTile("SCANS", stats.scans.toString(), IntelColors.Blue, Modifier.weight(1f))
         }
 
+        ApiKeySourcesSettings()
+
+        SectionBar("02", "مصادر Telegram الخاصة", "TELEGRAM")
         PrivateSourcesSettings(store, onDataChanged)
 
-        SectionBar("02", "إدارة البيانات", "LOCAL")
+        SectionBar("03", "إدارة البيانات", "LOCAL")
         DataSection(store = store, dataVersion = dataVersion, onDataChanged = onDataChanged)
 
-        SectionBar("03", "حول", "ABOUT")
+        SectionBar("04", "حول", "ABOUT")
         IntelPanel {
             MicroLabel("OSINT WORKBENCH · LOCAL BUILD", IntelColors.TextFaint)
             KeyValueRow("الإصدار", "${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})")
