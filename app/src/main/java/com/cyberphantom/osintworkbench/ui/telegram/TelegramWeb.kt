@@ -123,7 +123,12 @@ object TelegramWeb {
         if (view.url.isNullOrBlank()) view.loadUrl(TELEGRAM_URL)
     }
 
-    suspend fun openChat(view: WebView, username: String, onStatus: (String) -> Unit): TelegramSnapshot {
+    suspend fun openChat(
+        view: WebView,
+        username: String,
+        configuredName: String = username,
+        onStatus: (String) -> Unit
+    ): TelegramSnapshot {
         val handle = username.trim().removePrefix("@")
         require(handle.matches(Regex("[A-Za-z0-9_]{5,32}"))) { "معرّف المصدر غير صالح: $username" }
         onStatus("فتح نافذة المصدر المحدد…")
@@ -146,7 +151,7 @@ object TelegramWeb {
             last = current
             val route = current.url.substringAfter('#').trimStart('@').substringBefore('?').trimEnd('/')
             val routeMatches = route.equals(handle, ignoreCase = true)
-            val titleMatches = chatTitleMatches(current.title, handle)
+            val titleMatches = chatTitleMatches(current.title, handle, configuredName)
             if (routeMatches && titleMatches && current.hasComposer) {
                 delay(1_000L)
                 val hydrated = snapshot(view)
@@ -164,12 +169,14 @@ object TelegramWeb {
         )
     }
 
-    private fun chatTitleMatches(title: String, handle: String): Boolean {
-        val normalizedTitle = title.trim().lowercase()
-        val normalizedHandle = handle.trim().removePrefix("@").lowercase()
+    private fun chatTitleMatches(title: String, handle: String, configuredName: String): Boolean {
+        val normalizedTitle = PrivateSourceTextMatcher.normalize(title)
+        val normalizedHandle = PrivateSourceTextMatcher.normalize(handle.removePrefix("@"))
+        val normalizedName = PrivateSourceTextMatcher.normalize(configuredName)
         return normalizedTitle.isNotBlank() && (
-            normalizedTitle.contains(normalizedHandle) || normalizedTitle.contains("@$normalizedHandle")
-        )
+            (normalizedHandle.isNotBlank() && normalizedTitle.contains(normalizedHandle)) ||
+                (normalizedName.isNotBlank() && normalizedTitle.contains(normalizedName))
+            )
     }
 
     suspend fun send(view: WebView, text: String): TelegramSendOutcome {
