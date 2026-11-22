@@ -164,10 +164,18 @@ object TelegramWeb {
             // Web K may replace #@username with the resolved numeric peer id after opening.
             val routeMatches = route.equals(handle, ignoreCase = true) || route.matches(Regex("\\d{5,20}"))
             val titleMatches = chatTitleMatches(current.title, handle, configuredName)
-            if (routeMatches && titleMatches && current.hasComposer) {
-                delay(1_000L)
-                val hydrated = snapshot(view)
-                if (hydrated.hasComposer && hydrated.title.isNotBlank()) return hydrated
+            if (routeMatches && titleMatches) {
+                if (current.hasComposer) {
+                    delay(1_000L)
+                    val hydrated = snapshot(view)
+                    if (hydrated.hasComposer && hydrated.title.isNotBlank()) return hydrated
+                } else if (maybeStartBot(view)) {
+                    // A never-started bot shows Telegram's native Start control instead of
+                    // the composer. The user has explicitly initiated this source lookup,
+                    // so activate only that exact control and then wait for the composer.
+                    onStatus("بدء المحادثة مع المصدر لأول مرة…")
+                    delay(1_500L)
+                }
             }
             delay(800L)
         }
@@ -179,6 +187,27 @@ object TelegramWeb {
             "لم تفتح نافذة المحادثة المطلوبة خلال 55 ثانية. تأكد من إكمال تسجيل الدخول، ثم تحقق من اسم المصدر ومعرّفه." +
                 details + (lastReadError?.let { " · تعذر قراءة الصفحة: $it" } ?: "")
         )
+    }
+
+    private suspend fun maybeStartBot(view: WebView): Boolean {
+        val script = """
+            (function() {
+              var buttons = Array.prototype.slice.call(
+                document.querySelectorAll('.chat-input-control-button')
+              );
+              var start = buttons.find(function(button) {
+                if (!button || button.classList.contains('hide') || button.disabled) return false;
+                var style = window.getComputedStyle(button);
+                if (style.display === 'none' || style.visibility === 'hidden') return false;
+                var label = String(button.innerText || button.textContent || '').trim().toLowerCase();
+                return /^(start|start bot|ابدأ|بدء)$/.test(label);
+              });
+              if (!start) return 'none';
+              start.click();
+              return 'clicked';
+            })()
+        """.trimIndent()
+        return evaluate(view, script).contains("clicked", ignoreCase = true)
     }
 
     private fun chatTitleMatches(title: String, handle: String, configuredName: String): Boolean {
