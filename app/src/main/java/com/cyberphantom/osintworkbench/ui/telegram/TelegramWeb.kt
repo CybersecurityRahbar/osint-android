@@ -2,7 +2,7 @@ package com.cyberphantom.osintworkbench.ui.telegram
 
 import android.annotation.SuppressLint
 import android.content.Context
-import android.view.MotionEvent
+import android.view.ViewGroup
 import android.os.SystemClock
 import android.webkit.CookieManager
 import android.webkit.WebChromeClient
@@ -19,30 +19,40 @@ import org.json.JSONObject
 import org.json.JSONTokener
 import kotlin.coroutines.resume
 
-class SessionWebView(context: Context) : WebView(context) {
-    private var previousY = 0f
+class SessionWebView(context: Context) : WebView(context)
 
-    override fun onTouchEvent(event: MotionEvent): Boolean {
-        when (event.actionMasked) {
-            MotionEvent.ACTION_DOWN -> {
-                previousY = event.y
-                parent?.requestDisallowInterceptTouchEvent(true)
-            }
-            MotionEvent.ACTION_MOVE -> {
-                val deltaY = event.y - previousY
-                val atTop = scrollY <= 0
-                val atBottom = scrollY + height >= computeVerticalScrollRange() - 2
-                val handToParent = (atTop && deltaY > 0) || (atBottom && deltaY < 0)
-                parent?.requestDisallowInterceptTouchEvent(!handToParent)
-                previousY = event.y
-            }
-            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                parent?.requestDisallowInterceptTouchEvent(false)
-            }
+object PrivateSessionHost {
+    @Volatile private var retainedView: SessionWebView? = null
+
+    @Synchronized
+    fun getOrCreate(context: Context): SessionWebView {
+        retainedView?.let { return it }
+        return SessionWebView(context).also {
+            TelegramWeb.configure(it)
+            retainedView = it
         }
-        return super.onTouchEvent(event)
+    }
+
+    fun peek(): SessionWebView? = retainedView
+
+    fun attach(view: SessionWebView): SessionWebView {
+        (view.parent as? ViewGroup)?.removeView(view)
+        view.onResume()
+        return view
+    }
+
+    fun resume() {
+        retainedView?.onResume()
+    }
+
+    fun pause() {
+        retainedView?.let {
+            CookieManager.getInstance().flush()
+            it.onPause()
+        }
     }
 }
+
 
 data class TelegramMessage(
     val key: String,
