@@ -6,31 +6,35 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 
 /**
- * Signal-room palette: near-black graphite, hairline structure, one analytical accent
- * (signal teal) plus severity colours. No decorative gradients; contrast is reserved for data.
+ * Brushed-steel console palette: deep graphite, cool metallic edges and restrained
+ * luminous accents. Bright colours indicate state and evidence class, not decoration.
  */
 object IntelColors {
-    val Void = Color(0xFF04070A)
-    val Base = Color(0xFF070C11)
-    val Panel = Color(0xFF0B1218)
-    val PanelHigh = Color(0xFF101A22)
-    val PanelInset = Color(0xFF080F15)
+    val Void = Color(0xFF03070B)
+    val Base = Color(0xFF071019)
+    val Panel = Color(0xFF101C27)
+    val PanelHigh = Color(0xFF1A2B39)
+    val PanelInset = Color(0xFF09131D)
 
-    val Hairline = Color(0xFF1A2836)
-    val HairlineStrong = Color(0xFF263C4E)
-    val Cursor = Color(0xFF3ED6C6)
+    val SteelDark = Color(0xFF263B4B)
+    val Steel = Color(0xFF526D80)
+    val SteelBright = Color(0xFFA7C1D0)
+    val SteelGlow = Color(0xFFD4E6EC)
+    val Hairline = Color(0xFF344C5D)
+    val HairlineStrong = Color(0xFF5C7789)
+    val Cursor = Color(0xFF8BFFF0)
 
-    val Text = Color(0xFFE7EEF5)
-    val TextDim = Color(0xFF97A9BB)
-    val TextFaint = Color(0xFF5D7183)
+    val Text = Color(0xFFF0F7FA)
+    val TextDim = Color(0xFFB0C3CF)
+    val TextFaint = Color(0xFF78909F)
 
-    val Signal = Color(0xFF3ED6C6)
-    val SignalDim = Color(0xFF0E3A3A)
-    val Amber = Color(0xFFE3AC57)
-    val Red = Color(0xFFFF6B6B)
-    val Blue = Color(0xFF63A0FF)
-    val Violet = Color(0xFF9C87F2)
-    val Green = Color(0xFF57D18C)
+    val Signal = Color(0xFF4DF5E2)
+    val SignalDim = Color(0xFF124A50)
+    val Amber = Color(0xFFFFC66E)
+    val Red = Color(0xFFFF7182)
+    val Blue = Color(0xFF63D7FF)
+    val Violet = Color(0xFFC1A1FF)
+    val Green = Color(0xFF8AF2A9)
 
     fun severity(level: String): Color = when (level.lowercase()) {
         "critical", "high" -> Red
