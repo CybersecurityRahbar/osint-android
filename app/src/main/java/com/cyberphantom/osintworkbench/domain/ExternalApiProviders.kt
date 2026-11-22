@@ -339,11 +339,11 @@ class ExternalApiNewsClient(private val settings: ApiProviderSettingsStore) {
                 queryUrl(
                     "https://newsdata.io/api/1/latest",
                     linkedMapOf(
-                        "apikey" to key,
                         "q" to query,
                         "language" to language
                     )
-                )
+                ),
+                headers = mapOf("X-ACCESS-KEY" to key)
             )
             ApiProviderId.GNEWS -> requestJson(
                 queryUrl(
@@ -351,10 +351,10 @@ class ExternalApiNewsClient(private val settings: ApiProviderSettingsStore) {
                     linkedMapOf(
                         "q" to query,
                         "lang" to language,
-                        "max" to minOf(limit, 10).toString(),
-                        "apikey" to key
+                        "max" to minOf(limit, 10).toString()
                     )
-                )
+                ),
+                headers = mapOf("X-Api-Key" to key)
             )
             else -> error("Provider is not a news source.")
         }
