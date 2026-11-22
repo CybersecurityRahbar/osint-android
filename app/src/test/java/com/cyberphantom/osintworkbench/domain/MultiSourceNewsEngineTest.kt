@@ -215,4 +215,18 @@ class MultiSourceNewsEngineTest {
         assertFalse(outside!! >= start && outside <= end)
     }
 
+    @Test
+    fun rejectsHtmlChallengePageBeforeXmlParser() {
+        val error = runCatching {
+            engine.parseRss(
+                "<!doctype html><html><body>CAPTCHA</body></html>",
+                null,
+                "en",
+                "US"
+            )
+        }.exceptionOrNull()
+        assertTrue(error is IllegalArgumentException)
+        assertTrue(error?.message.orEmpty().contains("HTML"))
+    }
+
 }
