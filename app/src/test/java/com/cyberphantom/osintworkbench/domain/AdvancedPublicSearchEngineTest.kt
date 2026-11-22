@@ -168,4 +168,46 @@ class AdvancedPublicSearchEngineTest {
         assertTrue(metadata!!.contains("لا تثبت"))
         assertFalse(metadata.contains("مالك الرقم"))
     }
+
+    @Test
+    fun exactUsernameMatchDoesNotAcceptPartialSubstrings() {
+        val exact = PublicProfileResult(
+            "Google",
+            "needle public account",
+            "",
+            "https://example.net/users/needle",
+            70
+        )
+        val partial = PublicProfileResult(
+            "Google",
+            "needleman guide",
+            "A page about needleman tools.",
+            "https://example.net/needleman",
+            70
+        )
+        val embedded = PublicProfileResult(
+            "Google",
+            "Public profile",
+            "",
+            "https://example.net/users/needle123",
+            70
+        )
+
+        assertTrue(engine.containsExactUsername("needle", exact))
+        assertFalse(engine.containsExactUsername("needle", partial))
+        assertFalse(engine.containsExactUsername("needle", embedded))
+    }
+
+    @Test
+    fun exactUsernameMatchIsCaseInsensitiveAndAllowsHandlePunctuation() {
+        val result = PublicProfileResult(
+            "Bing",
+            "Public profile",
+            "",
+            "https://social.example/@Cyber_Phantom.7",
+            70
+        )
+        assertTrue(engine.containsExactUsername("@cyber_phantom.7", result))
+    }
+
 }
