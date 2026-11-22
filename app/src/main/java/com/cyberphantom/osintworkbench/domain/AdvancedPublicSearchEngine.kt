@@ -165,7 +165,12 @@ class AdvancedPublicSearchEngine {
         }
         // Interleave independent public-index queries with source-specific dorks so the
         // bounded adapter still reaches Reddit, forums, public profiles and document indexes.
-        val queries = (baseQueries.take(baseBudget) + targetedDorks.take(5)).distinct()
+        val queries = buildList {
+            addAll(baseQueries.take(2))
+            addAll(targetedDorks.take(2))
+            addAll(baseQueries.drop(2).take(1))
+            addAll(targetedDorks.drop(2).take(1))
+        }.distinct().take(4)
         val limit = maxResults.coerceIn(10, 80)
         onProgress("توسيع العبارة إلى ${queries.size} مسارات بحث متخصصة…")
 
