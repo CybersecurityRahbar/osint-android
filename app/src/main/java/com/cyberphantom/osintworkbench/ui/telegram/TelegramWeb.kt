@@ -1,6 +1,8 @@
 package com.cyberphantom.osintworkbench.ui.telegram
 
 import android.annotation.SuppressLint
+import android.content.Context
+import android.view.MotionEvent
 import android.os.SystemClock
 import android.webkit.CookieManager
 import android.webkit.WebChromeClient
@@ -16,6 +18,31 @@ import org.json.JSONArray
 import org.json.JSONObject
 import org.json.JSONTokener
 import kotlin.coroutines.resume
+
+class SessionWebView(context: Context) : WebView(context) {
+    private var previousY = 0f
+
+    override fun onTouchEvent(event: MotionEvent): Boolean {
+        when (event.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                previousY = event.y
+                parent?.requestDisallowInterceptTouchEvent(true)
+            }
+            MotionEvent.ACTION_MOVE -> {
+                val deltaY = event.y - previousY
+                val atTop = scrollY <= 0
+                val atBottom = scrollY + height >= computeVerticalScrollRange() - 2
+                val handToParent = (atTop && deltaY > 0) || (atBottom && deltaY < 0)
+                parent?.requestDisallowInterceptTouchEvent(!handToParent)
+                previousY = event.y
+            }
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                parent?.requestDisallowInterceptTouchEvent(false)
+            }
+        }
+        return super.onTouchEvent(event)
+    }
+}
 
 data class TelegramMessage(
     val key: String,
@@ -110,7 +137,7 @@ object TelegramWeb {
         if (fallback != null && fallback.hasComposer && fallback.hasSendButton) return fallback
         throw IllegalStateException(
             "تعذر تجهيز محادثة @$handle خلال 40 ثانية. " +
-                "تأكد أنك ما زلت مسجلاً في Telegram من زر «فتح Telegram»، وأن اسم المستخدم صحيح. " +
+                "تأكد أن جلسة المصدر مفتوحة وأن معرّف المصدر صحيح. " +
                 (fallback?.let { " (المحرر: ${it.hasComposer} · الإرسال: ${it.hasSendButton} · الصفحة: ${it.url})" } ?: "")
         )
     }
@@ -210,8 +237,14 @@ object TelegramWeb {
                 var node = bubble.querySelector('.message') || bubble.querySelector('.text-content') || bubble;
                 var text = String(node.innerText || node.textContent || '').trim();
                 var outgoing = bubble.classList.contains('is-out') || bubble.classList.contains('out');
-                var key = bubble.getAttribute('data-mid') || bubble.getAttribute('data-message-id') || bubble.id
-                  || (String(index) + ':' + (outgoing ? 'out:' : 'in:') + text);
+                var timeNode = bubble.querySelector('time') || bubble.querySelector('[title]');
+                var timeKey = timeNode ? (timeNode.getAttribute('datetime') || timeNode.getAttribute('title') || '') : '';
+                var stableId = bubble.getAttribute('data-mid') || bubble.getAttribute('data-message-id')
+                  || bubble.getAttribute('data-id') || bubble.id || '';
+                var seed = (outgoing ? 'out:' : 'in:') + timeKey + ':' + text;
+                var hash = 0;
+                for (var i = 0; i < seed.length; i++) hash = ((hash << 5) - hash + seed.charCodeAt(i)) | 0;
+                var key = stableId || ('msg:' + hash.toString(36));
                 return {key:String(key), text:text, outgoing:!!outgoing};
               }).filter(function(item) { return item.text.length > 0; });
               return JSON.stringify({
