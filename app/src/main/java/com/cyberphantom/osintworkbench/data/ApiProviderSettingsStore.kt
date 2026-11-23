@@ -117,6 +117,25 @@ class ApiProviderSettingsStore(context: Context) {
         preferences.edit().putInt(KEY_EXTERNAL_PAGE_LIMIT, value.coerceIn(1, 5)).apply()
     }
 
+    /**
+     * Target maximum number of merged records shown and saved for one identifier/news search.
+     * Individual providers may return fewer records because of quotas, paging, or indexing coverage.
+     */
+    @Synchronized
+    fun searchResultLimit(): Int = normalizeSearchResultLimit(
+        preferences.getInt(KEY_SEARCH_RESULT_LIMIT, DEFAULT_SEARCH_RESULT_LIMIT)
+    )
+
+    @Synchronized
+    fun setSearchResultLimit(value: Int) {
+        preferences.edit()
+            .putInt(KEY_SEARCH_RESULT_LIMIT, normalizeSearchResultLimit(value))
+            .apply()
+    }
+
+    private fun normalizeSearchResultLimit(value: Int): Int =
+        listOf(10, 50, 100, 200, 500).minBy { kotlin.math.abs(it - value) }
+
     private fun encrypt(value: String): String {
         val cipher = Cipher.getInstance(TRANSFORMATION)
         cipher.init(Cipher.ENCRYPT_MODE, getOrCreateSecretKey())
@@ -168,9 +187,11 @@ class ApiProviderSettingsStore(context: Context) {
     companion object {
         const val KEY_SLOTS = 3
         const val DEFAULT_SEARCH_REQUEST_LIMIT = 5
+        const val DEFAULT_SEARCH_RESULT_LIMIT = 100
         private const val DEFAULT_EXTERNAL_PAGE_LIMIT = 2
         private const val KEY_EXTERNAL_PROVIDER_LIMIT = "external_provider_limit"
         private const val KEY_EXTERNAL_PAGE_LIMIT = "external_page_limit"
+        private const val KEY_SEARCH_RESULT_LIMIT = "search_result_limit"
         private const val KEY_ALIAS = "osint_external_api_aes_v1"
         private const val ANDROID_KEYSTORE = "AndroidKeyStore"
         private const val TRANSFORMATION = "AES/GCM/NoPadding"
