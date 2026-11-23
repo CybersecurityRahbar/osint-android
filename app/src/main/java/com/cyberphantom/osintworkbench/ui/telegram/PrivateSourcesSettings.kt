@@ -45,12 +45,12 @@ import com.cyberphantom.osintworkbench.ui.design.SectionBar
 import java.util.UUID
 
 @Composable
-fun PrivateSourcesSettings(localStore: LocalStore, onSaved: () -> Unit) {
+fun PrivateSourcesSettings(localStore: LocalStore, onSaved: () -> Unit, onBack: () -> Unit) {
     val context = LocalContext.current
     val configStore = remember { PrivateSourcesStore(context) }
     var sources by remember { mutableStateOf(configStore.loadBots()) }
     var editing by remember { mutableStateOf<PrivateSourceBot?>(null) }
-    var selectedTab by rememberSaveable { mutableStateOf(0) }
+    var page by rememberSaveable { mutableStateOf("home") }
     var draft by remember {
         mutableStateOf(
             PrivateSourceBot(
@@ -68,31 +68,35 @@ fun PrivateSourcesSettings(localStore: LocalStore, onSaved: () -> Unit) {
     fun persist(next: List<PrivateSourceBot>) {
         sources = next
         configStore.saveBots(next)
+        onSaved()
     }
 
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        SectionBar("01", "إعداد المصادر الخاصة", "${sources.size} مصدر")
-        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            ModeChip(
-                selected = selectedTab == 0,
-                label = "إعداد المصادر",
-                onClick = { selectedTab = 0 },
-                modifier = Modifier.weight(1f),
-                accent = IntelColors.Violet
-            )
-            ModeChip(
-                selected = selectedTab == 1,
-                label = "نافذة الجلسة",
-                onClick = { selectedTab = 1 },
-                modifier = Modifier.weight(1f),
-                accent = IntelColors.Signal
-            )
-        }
-
-        if (selectedTab == 1) {
-            PrivateSessionSettingsPanel()
-        } else {
-            IntelPanel {
+        when (page) {
+            "home" -> {
+                SectionBar("01", "مصادر Telegram الخاصة", "PRIVATE")
+                IntelPanel(accent = IntelColors.Violet) {
+                    MicroLabel("PRIVATE SOURCE SETTINGS", IntelColors.Violet)
+                    Text("إدارة مصادر البحث الخاصة وجلسة Telegram كل واحدة في شاشة مستقلة.", color = IntelColors.TextFaint, fontSize = 9.sp, lineHeight = 14.sp)
+                    GhostButton(
+                        text = "إدارة مصادر البحث الخاصة",
+                        onClick = { page = "list" },
+                        accent = IntelColors.Violet,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    GhostButton(
+                        text = "إعداد جلسة Telegram",
+                        onClick = { page = "session" },
+                        accent = IntelColors.Signal,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+                GhostButton("رجوع إلى الإعدادات", onBack, accent = IntelColors.TextDim)
+            }
+            "list" -> {
+                GhostButton("رجوع إلى مصادر Telegram", { page = "home" }, accent = IntelColors.TextDim)
+                SectionBar("02", "قائمة المصادر الخاصة", sources.size.toString() + " مصادر", IntelColors.Violet)
+                IntelPanel {
                 MicroLabel("PRIVATE SOURCE REGISTRY", IntelColors.Violet)
                 Text(
                     "أضف مصادر البحث واضبط طريقة إرسال الرقم والاسم بشكل مستقل. يمكن اختيار أمر ومطالبة أو إرسال القيمة مباشرة دون أمر.",
@@ -140,6 +144,7 @@ fun PrivateSourcesSettings(localStore: LocalStore, onSaved: () -> Unit) {
                                 modifier = Modifier.size(17.dp).clickable {
                                     editing = source
                                     draft = source
+                                    page = "editor"
                                 }
                             )
                             Spacer(Modifier.size(12.dp))
@@ -174,13 +179,17 @@ fun PrivateSourcesSettings(localStore: LocalStore, onSaved: () -> Unit) {
                             namePrompt = "الرجاء ارسال الاسم"
                         )
                         editing = draft
+                        page = "editor"
                     },
                     icon = Icons.Filled.Add,
                     accent = IntelColors.Violet
                 )
             }
-
-            editing?.let {
+            }
+            "editor" -> {
+                GhostButton("رجوع إلى قائمة المصادر", { editing = null; page = "list" }, accent = IntelColors.TextDim)
+                SectionBar("03", "إعداد مصدر خاص", "CONFIG", IntelColors.Violet)
+                editing?.let {
                 IntelPanel(accent = IntelColors.Violet) {
                     MicroLabel("SOURCE CONFIGURATION", IntelColors.Violet)
                     IntelField(draft.name, { draft = draft.copy(name = it) }, "اسم المصدر")
@@ -230,18 +239,29 @@ fun PrivateSourcesSettings(localStore: LocalStore, onSaved: () -> Unit) {
                                     }
                                     persist(next)
                                     editing = null
+                                    page = "list"
                                 }
                             },
                             icon = Icons.Filled.Save,
                             accent = IntelColors.Violet
                         )
-                        GhostButton(text = "إلغاء", onClick = { editing = null })
+                        GhostButton(text = "إلغاء", onClick = { editing = null
+                                    page = "list" })
                     }
                 }
             }
+            }
+            "session" -> {
+                GhostButton("رجوع إلى مصادر Telegram", { page = "home" }, accent = IntelColors.TextDim)
+                SectionBar("04", "إعداد جلسة Telegram", "SESSION", IntelColors.Signal)
+                PrivateSessionSettingsPanel()
+            }
+            else -> page = "home"
         }
     }
 }
+
+
 
 @Composable
 private fun SourceFlowSelector(
