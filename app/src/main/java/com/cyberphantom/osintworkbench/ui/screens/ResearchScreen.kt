@@ -214,6 +214,15 @@ fun ResearchScreen(
                     valueRange = 1f..5f,
                     steps = 3
                 )
+                GhostButton(
+                    text = "استخدام جميع المصادر المفعّلة",
+                    onClick = {
+                        externalProviderLimit = 5
+                        apiProviderSettings.setExternalProviderLimit(5)
+                    },
+                    accent = IntelColors.Signal,
+                    modifier = Modifier.fillMaxWidth()
+                )
                 SectionBar("PAGES", "عدد الصفحات لكل محرك يدعم الترقيم", externalPageLimit.toString() + " / 5", accent)
                 Slider(
                     value = externalPageLimit.toFloat(),
@@ -228,7 +237,7 @@ fun ResearchScreen(
                     steps = 3
                 )
                 Text(
-                    "SerpApi يحتسب كل طلب بحث غير مخزّن كرصيد مستقل: صفحتان للويب + الصور + YouTube + فيديوهات الويب قد تصل إلى 5 طلبات. إيقاف الوسائط أو تقليل الصفحات يقلل الاستهلاك. بقية المزودين تستخدم أكبر عدد نتائج تسمح به واجهاتهم في الطلب الواحد.",
+                    "تقدير SerpApi الحالي: عدد صفحات الويب (" + externalPageLimit + ") + طلب صور + طلب YouTube + طلب فيديوهات ويب عند تفعيل الوسائط. كل طلب غير مخزّن قد يستهلك رصيداً مستقلاً؛ خفّض الصفحات أو أوقف الوسائط لتقليل التكلفة. بقية المزودين قد يعيدون عدة نتائج في طلب واحد.",
                     color = IntelColors.Amber,
                     fontSize = 9.sp,
                     lineHeight = 14.sp

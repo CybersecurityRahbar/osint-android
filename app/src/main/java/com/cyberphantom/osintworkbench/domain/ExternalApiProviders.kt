@@ -198,7 +198,7 @@ class ExternalApiSearchClient(private val settings: ApiProviderSettingsStore) {
                     body = JSONObject()
                         .put("query", query)
                         .put("topic", "general")
-                        .put("search_depth", "advanced")
+                        .put("search_depth", "basic")
                         .put("max_results", minOf(20, limit))
                         .put("include_answer", false)
                         .put("include_raw_content", true)

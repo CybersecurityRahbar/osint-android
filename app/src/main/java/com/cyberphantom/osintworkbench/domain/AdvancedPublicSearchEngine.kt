@@ -170,12 +170,19 @@ class AdvancedPublicSearchEngine(private val appContext: Context? = null) {
         }
         // Interleave independent public-index queries with source-specific dorks so the
         // bounded adapter still reaches Reddit, forums, public profiles and document indexes.
+        val redditQuery = when (kind) {
+            IdentifierKind.USERNAME -> "\"" + query.removePrefix("@") + "\" site:reddit.com"
+            IdentifierKind.PHONE -> "\"" + query.filter(Char::isDigit) + "\" site:reddit.com"
+            IdentifierKind.EMAIL -> "\"" + query + "\" site:reddit.com"
+            IdentifierKind.NAME -> "\"" + query + "\" site:reddit.com"
+        }
         val queries = buildList {
             addAll(baseQueries.take(2))
             addAll(targetedDorks.take(2))
             addAll(baseQueries.drop(2).take(1))
             addAll(targetedDorks.drop(2).take(1))
-        }.distinct().take(4)
+            add(redditQuery)
+        }.distinct().take(5)
         val limit = maxResults.coerceIn(10, 80)
         onProgress("توسيع العبارة إلى ${queries.size} مسارات بحث متخصصة…")
 
@@ -287,7 +294,7 @@ class AdvancedPublicSearchEngine(private val appContext: Context? = null) {
             }
             if (kind == IdentifierKind.USERNAME && collectedResults.any { it.imageUrl.isNullOrBlank() } &&
                 collectedResults.none { it.imageUrl.isNullOrBlank() && containsExactUsername(usernameNeedle, it) }) {
-                add("استُبعدت نتائج ويب لم تتضمن تطابقاً دقيقاً مع اسم المستخدم؛ لا نعرض نتائج جزئية مضللة.")
+                add("لم يظهر ملف عام يطابق اسم المستخدم بدقة. تعرض النتائج الأخرى بوسم «ذكر مرتبط» ولا تُعد إثباتاً لملكية الحساب.")
             }
             if (merged.isEmpty()) {
                 add("لم تُستخرج نتائج من المصادر التي أمكن الوصول إليها. قد تكون الفهارس محدودة أو محجوبة أو لا تحتوي العبارة؛ النتيجة الصفرية لا تثبت غياب المعلومات.")
