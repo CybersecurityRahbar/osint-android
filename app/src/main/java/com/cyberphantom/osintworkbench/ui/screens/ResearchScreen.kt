@@ -223,7 +223,7 @@ fun ResearchScreen(
                     accent = IntelColors.Signal,
                     modifier = Modifier.fillMaxWidth()
                 )
-                SectionBar("PAGES", "عدد الصفحات لكل محرك يدعم الترقيم", externalPageLimit.toString() + " / 5", accent)
+                SectionBar("PAGES", "دفعات النتائج لكل محرك", externalPageLimit.toString() + " / 5", accent)
                 Slider(
                     value = externalPageLimit.toFloat(),
                     onValueChange = { selected ->
@@ -237,7 +237,7 @@ fun ResearchScreen(
                     steps = 3
                 )
                 Text(
-                    "كل صفحة ويب من SerpApi تطلب حتى 100 نتيجة. تقدير الرصيد: " + externalPageLimit + " صفحات ويب + طلب صور + طلب YouTube + طلب فيديوهات ويب عند تفعيل الوسائط. كل طلب غير مخزّن قد يستهلك رصيداً مستقلاً؛ خفّض الصفحات أو أوقف الوسائط لتقليل التكلفة. بقية المزودين قد يعيدون عدة نتائج في طلب واحد.",
+                    "SerpApi Search Index يطلب حتى 100 نتيجة في الصفحة الواحدة مع وضع Deep لتوسيع الاسترجاع. الحد الحالي: " + (externalPageLimit * 100) + " نتيجة ويب مطلوبة كحد أقصى، وقد يعيد الفهرس أقل. تُحسب كل صفحة ناجحة كبحث مستقل؛ ويمكن أن يضيف فهرس الصور وفهرس الفيديو طلباً لكل منهما. إذا لم يكن Search Index متاحاً للحساب، يستخدم التطبيق Google Light الذي يعيد عادة 10 نتائج لكل صفحة.",
                     color = IntelColors.Amber,
                     fontSize = 9.sp,
                     lineHeight = 14.sp

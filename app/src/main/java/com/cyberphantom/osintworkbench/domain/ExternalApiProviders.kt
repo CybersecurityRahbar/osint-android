@@ -128,15 +128,20 @@ class ExternalApiSearchClient(private val settings: ApiProviderSettingsStore) {
         val warnings = mutableListOf<String>()
         when (provider) {
             ApiProviderId.SERP_API -> {
-                var completedPages = 0
+                // SerpApi Search Index has its own multi-billion-page index and supports
+                // up to 100 requested records per response plus deep-recall mode.
+                // It is currently preview, so gracefully fall back to Google Light if unavailable.
+                var indexedPages = 0
                 for (page in 0 until pageLimit) {
                     try {
                         val root = requestJson(
                             queryUrl(
                                 "https://serpapi.com/search.json",
                                 linkedMapOf(
-                                    "engine" to "google",
+                                    "engine" to "search_index",
                                     "q" to query,
+                                    "type" to "web",
+                                    "mode" to "deep",
                                     "num" to "100",
                                     "start" to (page * 100).toString(),
                                     "api_key" to key
@@ -144,14 +149,49 @@ class ExternalApiSearchClient(private val settings: ApiProviderSettingsStore) {
                             )
                         )
                         detectLogicalError(provider, root)
-                        results += parseSearchResults(provider, root, includeImages)
-                        completedPages++
-                        if ((root.optJSONArray("organic_results")?.length() ?: 0) == 0) break
+                        val pageResults = parseSearchResults(provider, root, includeImages)
+                        results += pageResults
+                        indexedPages++
+                        val next = root.optJSONObject("serpapi_pagination")?.optString("next").orEmpty()
+                        if (pageResults.isEmpty() || next.isBlank() || results.size >= limit) break
                     } catch (error: Exception) {
-                        if (completedPages == 0) throw error
-                        warnings += "SerpApi: توقف ترقيم نتائج الويب بعد " + completedPages +
-                            " صفحة: " + safeErrorMessage(error)
+                        if (indexedPages == 0) {
+                            warnings += "SerpApi Search Index غير متاح لهذا الحساب أو تعذر الوصول إليه؛ يجري الرجوع إلى Google Light: " + safeErrorMessage(error)
+                        } else {
+                            warnings += "SerpApi Search Index: توقف ترقيم النتائج بعد " + indexedPages +
+                                " صفحات: " + safeErrorMessage(error)
+                        }
                         break
+                    }
+                }
+
+                if (indexedPages == 0 || results.isEmpty()) {
+                    var fallbackPages = 0
+                    for (page in 0 until pageLimit) {
+                        try {
+                            val root = requestJson(
+                                queryUrl(
+                                    "https://serpapi.com/search.json",
+                                    linkedMapOf(
+                                        "engine" to "google_light",
+                                        "q" to query,
+                                        "start" to (page * 10).toString(),
+                                        "api_key" to key
+                                    )
+                                )
+                            )
+                            detectLogicalError(provider, root)
+                            val pageResults = parseSearchResults(provider, root, includeImages)
+                            results += pageResults
+                            fallbackPages++
+                            val next = root.optJSONObject("serpapi_pagination")?.optString("next").orEmpty()
+                            if (pageResults.isEmpty() || next.isBlank() || results.size >= limit) break
+                        } catch (error: Exception) {
+                            if (fallbackPages == 0) throw error
+                            warnings += "Google Light: توقف الترقيم بعد " + fallbackPages +
+                                " صفحات: " + safeErrorMessage(error)
+                            break
+                        }
                     }
                 }
 
@@ -167,27 +207,52 @@ class ExternalApiSearchClient(private val settings: ApiProviderSettingsStore) {
                         media += parseSerpImages(root)
                     }.onFailure { warnings += "SerpApi Images: " + safeErrorMessage(it as? Exception ?: Exception()) }
                 }
+
                 if (includeVideos) {
+                    val beforeVideos = media.size
                     runCatching {
                         val root = requestJson(
                             queryUrl(
                                 "https://serpapi.com/search.json",
-                                linkedMapOf("engine" to "youtube", "search_query" to rawMediaQuery(query), "api_key" to key)
+                                linkedMapOf(
+                                    "engine" to "search_index",
+                                    "q" to query,
+                                    "type" to "video",
+                                    "mode" to "deep",
+                                    "num" to "100",
+                                    "start" to "0",
+                                    "api_key" to key
+                                )
                             )
                         )
                         detectLogicalError(provider, root)
-                        media += parseSerpVideos(root, "YouTube")
-                    }.onFailure { warnings += "YouTube index: " + safeErrorMessage(it as? Exception ?: Exception()) }
-                    runCatching {
-                        val root = requestJson(
-                            queryUrl(
-                                "https://serpapi.com/search.json",
-                                linkedMapOf("engine" to "google_videos", "q" to query, "api_key" to key)
+                        media += parseSerpVideos(root, "SerpApi Search Index Videos")
+                    }.onFailure { warnings += "Search Index Videos: " + safeErrorMessage(it as? Exception ?: Exception()) }
+
+                    // Search Index video corpus may be unavailable while the preview is evolving.
+                    // Use dedicated YouTube and Google Video indexes only as a fallback.
+                    if (media.size == beforeVideos) {
+                        runCatching {
+                            val root = requestJson(
+                                queryUrl(
+                                    "https://serpapi.com/search.json",
+                                    linkedMapOf("engine" to "youtube", "search_query" to rawMediaQuery(query), "api_key" to key)
+                                )
                             )
-                        )
-                        detectLogicalError(provider, root)
-                        media += parseSerpVideos(root, "Google Videos")
-                    }.onFailure { warnings += "Google Videos: " + safeErrorMessage(it as? Exception ?: Exception()) }
+                            detectLogicalError(provider, root)
+                            media += parseSerpVideos(root, "YouTube")
+                        }.onFailure { warnings += "YouTube index: " + safeErrorMessage(it as? Exception ?: Exception()) }
+                        runCatching {
+                            val root = requestJson(
+                                queryUrl(
+                                    "https://serpapi.com/search.json",
+                                    linkedMapOf("engine" to "google_videos", "q" to query, "api_key" to key)
+                                )
+                            )
+                            detectLogicalError(provider, root)
+                            media += parseSerpVideos(root, "Google Videos")
+                        }.onFailure { warnings += "Google Videos: " + safeErrorMessage(it as? Exception ?: Exception()) }
+                    }
                 }
             }
             ApiProviderId.TAVILY -> {
@@ -334,7 +399,7 @@ class ExternalApiSearchClient(private val settings: ApiProviderSettingsStore) {
                     else -> ""
                 }.trim()
                 val image = when (provider) {
-                    ApiProviderId.SERP_API -> item.optString("thumbnail")
+                    ApiProviderId.SERP_API -> item.optString("image_url").ifBlank { item.optString("thumbnail") }
                     ApiProviderId.EXA -> item.optString("image")
                     else -> ""
                 }.takeIf { includeImages && isHttpsUrl(it) }

@@ -63,12 +63,12 @@ private data class ApiProviderInfo(
 
 private val apiProviderInfo = listOf(
     ApiProviderInfo(
-        ApiProviderId.SERP_API, "SerpApi", "بحث Google منظم عبر API",
-        "نتائج ويب Google، ويمكنه دعم صور/أخبار Google عبر إعدادات المحرك. يستخدمه هذا التكامل للبحث العام عن النتائج.",
-        "250 بحثاً شهرياً في الخطة المجانية. شرط البطاقة عند التسجيل الحالي غير محسوم؛ تحقق منه في صفحة التسجيل.",
-        "أنشئ حساباً، ثم انسخ API key من لوحة التحكم والصقه في أحد الحقول الثلاثة.",
+        ApiProviderId.SERP_API, "SerpApi", "Search Index عميق + Google Images + فهرس الفيديو",
+        "يستخدم التطبيق Search Index الخاص بـSerpApi (فهرس ويب مستقل ضخم في وضع Preview) مع mode=deep وطلب حتى 100 نتيجة في الصفحة. ويبحث كذلك في فهرس الفيديوهات، مع fallback إلى Google Light وYouTube/Google Videos إذا لم تتوفر واجهة Preview للحساب.",
+        "الخطة المجانية: 250 بحثاً شهرياً وبحد مرور 50 طلباً في الساعة. كل طلب بحث ناجح يحتسب رصيداً واحداً حتى عند إرجاع 100 نتيجة؛ الطلبات المخزنة مؤقتاً والأخطاء لا تُحتسب. صفحات الويب وطلبات الصور والفيديو المنفصلة تستهلك كل واحدة رصيداً عند نجاحها.",
+        "أنشئ حساباً مجانياً، ثم انسخ API key من لوحة التحكم والصقه في أحد الحقول الثلاثة.",
         "https://serpapi.com/manage-api-key",
-        "المفتاح يمر في معامل api_key داخل طلب HTTPS لأن هذا ما تتطلبه واجهة SerpApi."
+        "يمر المفتاح في معامل api_key داخل طلب HTTPS لأن واجهة SerpApi تتطلب ذلك. Search Index في Preview وقد يختلف توفره بحسب الحساب؛ التطبيق يعود تلقائياً إلى Google Light عند عدم توفره."
     ),
     ApiProviderInfo(
         ApiProviderId.TAVILY, "Tavily", "محرك بحث عام مهيأ للاسترجاع",
