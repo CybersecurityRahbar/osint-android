@@ -726,7 +726,12 @@ private fun ResultRow(result: PublicProfileResult, onOpen: () -> Unit) {
             MicroLabel("FULL PAGE TEXT · " + fullText.length + " CHARACTERS", IntelColors.Signal)
             when {
                 loading -> Text("يتم استخراج النص العام من الصفحة…", color = IntelColors.TextFaint, fontSize = 9.sp)
-                fullText.isNotBlank() -> Text(fullText, color = IntelColors.TextDim, fontSize = 10.sp, lineHeight = 16.sp)
+                fullText.isNotBlank() -> Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                    Text(fullText, color = IntelColors.TextDim, fontSize = 10.sp, lineHeight = 16.sp)
+                    if (fetchAttempted && fullText.length < 1_500) {
+                        NoteBlock("هذا هو النص المتاح من فهرس البحث أو الصفحة العامة. قد يكون مقتطفاً فقط لأن الموقع حجب بقية الصفحة أو يعتمد على JavaScript أو تسجيل الدخول.", IntelColors.Amber, "PARTIAL PUBLIC TEXT")
+                    }
+                }
                 else -> NoteBlock("لم يتمكن الموقع من إتاحة النص العام. قد يعتمد على JavaScript أو تسجيل الدخول أو اشتراك أو يمنع الطلبات؛ لم يتم تجاوز أي حماية.", IntelColors.Amber, "TEXT UNAVAILABLE")
             }
         }
@@ -796,7 +801,12 @@ private fun NewsRow(article: NewsArticle, onOpen: () -> Unit) {
             MicroLabel("FULL ARTICLE TEXT · " + fullText.length + " CHARACTERS", IntelColors.Blue)
             when {
                 loading -> Text("يتم استخراج النص العام للمقال…", color = IntelColors.TextFaint, fontSize = 9.sp)
-                fullText.isNotBlank() -> Text(fullText, color = IntelColors.TextDim, fontSize = 10.sp, lineHeight = 16.sp)
+                fullText.isNotBlank() -> Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                    Text(fullText, color = IntelColors.TextDim, fontSize = 10.sp, lineHeight = 16.sp)
+                    if (fetchAttempted && fullText.length < 1_500) {
+                        NoteBlock("المتاح حالياً مقتطف قصير فقط؛ لم تسمح الصفحة العامة باستخراج بقية المقال. افتح المصدر الأصلي لقراءة النص الكامل.", IntelColors.Amber, "PARTIAL ARTICLE TEXT")
+                    }
+                }
                 else -> NoteBlock("لم يتوفر النص الكامل من واجهة المصدر أو الصفحة العامة. قد يكون المحتوى محمياً أو محجوباً؛ افتح المقال الأصلي لقراءته.", IntelColors.Amber, "TEXT UNAVAILABLE")
             }
         }

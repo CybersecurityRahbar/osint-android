@@ -74,6 +74,7 @@ fun PrivateSourcesSettings(localStore: LocalStore, onSaved: () -> Unit, onBack: 
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         when (page) {
             "home" -> {
+                GhostButton("رجوع إلى الإعدادات", onBack, accent = IntelColors.TextDim)
                 SectionBar("01", "مصادر Telegram الخاصة", "PRIVATE")
                 IntelPanel(accent = IntelColors.Violet) {
                     MicroLabel("PRIVATE SOURCE SETTINGS", IntelColors.Violet)
@@ -91,7 +92,6 @@ fun PrivateSourcesSettings(localStore: LocalStore, onSaved: () -> Unit, onBack: 
                         modifier = Modifier.fillMaxWidth()
                     )
                 }
-                GhostButton("رجوع إلى الإعدادات", onBack, accent = IntelColors.TextDim)
             }
             "list" -> {
                 GhostButton("رجوع إلى مصادر Telegram", { page = "home" }, accent = IntelColors.TextDim)

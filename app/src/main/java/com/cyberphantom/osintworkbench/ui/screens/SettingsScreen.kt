@@ -94,20 +94,10 @@ fun SettingsScreen(stats: StoreStats, store: LocalStore, dataVersion: Int, onDat
             }
 
             SettingsPage.API_KEYS -> {
-                SettingsSubpageHeader(
-                    title = "إعداد مفاتيح المصادر الخاصة",
-                    detail = "إدارة مفاتيح البحث والأخبار الخارجية",
-                    onBack = { page = SettingsPage.HOME }
-                )
                 ApiKeySourcesSettings(onBack = { page = SettingsPage.HOME })
             }
 
             SettingsPage.PRIVATE_SOURCES -> {
-                SettingsSubpageHeader(
-                    title = "مصادر Telegram الخاصة",
-                    detail = "المصادر الخاصة وإعدادات جلسة Telegram",
-                    onBack = { page = SettingsPage.HOME }
-                )
                 PrivateSourcesSettings(
                     localStore = store,
                     onSaved = onDataChanged,
@@ -116,11 +106,6 @@ fun SettingsScreen(stats: StoreStats, store: LocalStore, dataVersion: Int, onDat
             }
 
             SettingsPage.DATA -> {
-                SettingsSubpageHeader(
-                    title = "البيانات والنسخ الاحتياطي",
-                    detail = "إدارة المساحة المحلية والسجلات",
-                    onBack = { page = SettingsPage.HOME }
-                )
                 DataSection(
                     store = store,
                     dataVersion = dataVersion,
