@@ -147,6 +147,8 @@ class AdvancedPublicSearchEngine(private val appContext: Context? = null) {
         kind: IdentifierKind,
         maxResults: Int = 60,
         includeImages: Boolean = true,
+        includeVideos: Boolean = true,
+        pageLimit: Int = 2,
         onProgress: (String) -> Unit = {}
     ): PublicWebSearchResponse {
         val started = System.nanoTime()
@@ -223,6 +225,8 @@ class AdvancedPublicSearchEngine(private val appContext: Context? = null) {
                 maxCalls = providerSettings.externalProviderLimit(),
                 maxResults = limit,
                 includeImages = includeImages,
+                includeVideos = includeVideos,
+                pageLimit = pageLimit,
                 onProgress = onProgress
             )
         } ?: ExternalSearchOutcome()
@@ -245,13 +249,23 @@ class AdvancedPublicSearchEngine(private val appContext: Context? = null) {
         val allResults = if (kind == IdentifierKind.USERNAME) {
             val exactPages = collectedResults.filter {
                 it.imageUrl.isNullOrBlank() && containsExactUsername(usernameNeedle, it)
+            }.map { it.copy(matchType = "EXACT_PROFILE") }
+            val relatedPages = collectedResults.filter {
+                it.imageUrl.isNullOrBlank() && !containsExactUsername(usernameNeedle, it)
+            }.map {
+                it.copy(
+                    confidence = minOf(it.confidence, 48),
+                    matchType = "RELATED_MENTION",
+                    description = (it.description + " · ذكر مفهرس لاسم المستخدم داخل صفحة عامة؛ لا يثبت ملكية الحساب.").take(900)
+                )
             }
             val indexedImages = collectedResults.filter { !it.imageUrl.isNullOrBlank() }.map {
                 it.copy(
-                    description = (it.description + " · صورة مفهرسة لعبارة البحث؛ ليست إثباتاً لوجود الحساب.").take(500)
+                    matchType = "RESULT",
+                    description = (it.description + " · صورة مفهرسة لعبارة البحث؛ ليست إثباتاً لوجود الحساب.").take(900)
                 )
             }
-            exactPages + indexedImages
+            exactPages + relatedPages + indexedImages
         } else collectedResults
 
         val images = allResults.filter { !it.imageUrl.isNullOrBlank() }
@@ -289,7 +303,8 @@ class AdvancedPublicSearchEngine(private val appContext: Context? = null) {
             results = merged,
             warnings = warnings,
             providersAttempted = broadOutcome.attempted + enrichment.attempted + externalOutcome.providersAttempted + if (shouldTryInstantAnswer) 1 else 0,
-            elapsedMs = ((System.nanoTime() - started) / 1_000_000L).coerceAtLeast(0L)
+            elapsedMs = ((System.nanoTime() - started) / 1_000_000L).coerceAtLeast(0L),
+            mediaResults = externalOutcome.mediaResults
         )
     }
 

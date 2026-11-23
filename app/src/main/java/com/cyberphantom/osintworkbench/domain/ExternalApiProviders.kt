@@ -672,7 +672,14 @@ class ExternalApiNewsClient(private val settings: ApiProviderSettingsStore) {
                         publisherName = source.ifBlank { domain },
                         imageUrl = image,
                         provider = providerLabel(provider),
-                        description = description
+                        description = description,
+                        fullText = when (provider) {
+                            ApiProviderId.CURRENTS -> item.optString("content")
+                            ApiProviderId.THE_NEWS_API -> item.optString("content").ifBlank { item.optString("full_content") }
+                            ApiProviderId.NEWSDATA -> item.optString("content")
+                            ApiProviderId.GNEWS -> item.optString("content")
+                            else -> ""
+                        }.take(60_000)
                     )
                 )
             }

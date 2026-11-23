@@ -33,7 +33,9 @@ data class PublicProfileResult(
     /** Optional image thumbnail returned by a public image index; never an identity assertion. */
     val imageUrl: String? = null,
     /** Full public page text, when the provider returns it without requiring a second fetch. */
-    val fullText: String = ""
+    val fullText: String = "",
+    /** RESULT, EXACT_PROFILE, or RELATED_MENTION. A mention is not account verification. */
+    val matchType: String = "RESULT"
 )
 
 data class SearchMediaResult(
