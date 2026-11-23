@@ -131,11 +131,11 @@ private val apiProviderInfo = listOf(
 )
 
 @Composable
-fun ApiKeySourcesSettings() {
+fun ApiKeySourcesSettings(onBack: () -> Unit = {}) {
     val context = LocalContext.current
     val uriHandler = LocalUriHandler.current
     val store = remember(context) { ApiProviderSettingsStore(context) }
-    var route by rememberSaveable { mutableStateOf("closed") }
+    var route by rememberSaveable { mutableStateOf("home") }
 
     val selectedProvider = route.substringAfter("provider:", "")
         .takeIf(String::isNotBlank)
@@ -173,7 +173,7 @@ fun ApiKeySourcesSettings() {
         }
         route == "home" -> {
             SectionBar("01", "إعداد مفاتيح المصادر الخاصة", "اختر الفئة", IntelColors.Violet)
-            GhostButton("رجوع إلى الإعدادات", { route = "closed" }, icon = Icons.Filled.ArrowBack)
+            GhostButton("رجوع إلى الإعدادات", onBack, icon = Icons.Filled.ArrowBack)
             CategoryCard(
                 title = "قسم مفاتيح البحث الشامل والتتبع",
                 detail = "SerpApi · Tavily · TinyFish · Firecrawl · Exa API",
