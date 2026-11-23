@@ -30,6 +30,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -151,12 +152,13 @@ fun ReportActions(report: ScanReport) {
 }
 
 @Composable
-fun DataSection(store: LocalStore, dataVersion: Int, onDataChanged: () -> Unit) {
+fun DataSection(store: LocalStore, dataVersion: Int, onDataChanged: () -> Unit, onBack: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var scans by remember { mutableStateOf(emptyList<ScanRow>()) }
     var status by remember { mutableStateOf<String?>(null) }
     var confirmErase by remember { mutableStateOf(false) }
+    var dataPage by rememberSaveable { mutableStateOf("home") }
 
     LaunchedEffect(dataVersion) {
         scans = withContext(Dispatchers.IO) { runCatching { store.scans(20) }.getOrDefault(emptyList()) }
@@ -196,6 +198,26 @@ fun DataSection(store: LocalStore, dataVersion: Int, onDataChanged: () -> Unit) 
         }
     }
 
+    when (dataPage) {
+        "home" -> {
+            GhostButton("رجوع إلى الإعدادات", onBack, accent = IntelColors.TextDim)
+            SectionBar("01", "إدارة البيانات", "LOCAL")
+            IntelPanel(accent = IntelColors.Blue) {
+                MicroLabel("BACKUP / RESTORE", IntelColors.Blue)
+                Text("النسخ الاحتياطي والاستعادة", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = IntelColors.Text)
+                Text("تصدير مساحة العمل المحلية أو استعادتها من ملف JSON.", fontSize = 9.sp, color = IntelColors.TextFaint)
+                GhostButton("فتح النسخ الاحتياطي", { dataPage = "backup" }, accent = IntelColors.Blue, modifier = Modifier.fillMaxWidth())
+            }
+            IntelPanel(accent = IntelColors.Signal) {
+                MicroLabel("OPERATION LOG", IntelColors.Signal)
+                Text("سجل العمليات المحفوظة", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = IntelColors.Text)
+                Text("عرض عمليات البحث والاستطلاع الأخيرة وإدارة سجلاتها.", fontSize = 9.sp, color = IntelColors.TextFaint)
+                GhostButton("فتح سجل العمليات", { dataPage = "logs" }, accent = IntelColors.Signal, modifier = Modifier.fillMaxWidth())
+            }
+        }
+        "backup" -> {
+            GhostButton("رجوع إلى إدارة البيانات", { dataPage = "home" }, accent = IntelColors.TextDim)
+            SectionBar("02", "النسخ الاحتياطي والاستعادة", "BACKUP")
     IntelPanel {
         MicroLabel("DATA / BACKUP", IntelColors.Blue)
         Text("نسخ واستعادة المساحة المحلية", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = IntelColors.Text)
@@ -241,6 +263,36 @@ fun DataSection(store: LocalStore, dataVersion: Int, onDataChanged: () -> Unit) 
         )
     }
 
+
+    if (confirmErase) {
+        AlertDialog(
+            onDismissRequest = { confirmErase = false },
+            title = { Text("مسح كل البيانات المحلية؟", fontWeight = FontWeight.Bold) },
+            text = {
+                Text(
+                    "سيُحذف كل ما جمعته من كيانات وعلاقات وأدلة وعمليات وحالات. لا يمكن التراجع.",
+                    fontSize = 12.sp,
+                    lineHeight = 18.sp
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmErase = false
+                    scope.launch {
+                        val done = withContext(Dispatchers.IO) { runCatching { store.clearAllData() }.isSuccess }
+                        status = if (done) "تم مسح قاعدة البيانات المحلية." else "تعذر مسح البيانات."
+                        scans = withContext(Dispatchers.IO) { runCatching { store.scans(20) }.getOrDefault(emptyList()) }
+                        onDataChanged()
+                    }
+                }) { Text("مسح نهائي", color = IntelColors.Red) }
+            },
+            dismissButton = { TextButton(onClick = { confirmErase = false }) { Text("إلغاء") } },
+            containerColor = IntelColors.PanelHigh
+        )
+    }
+        }
+        "logs" -> {
+            GhostButton("رجوع إلى إدارة البيانات", { dataPage = "home" }, accent = IntelColors.TextDim)
     SectionBar("03", "سجل العمليات", "${scans.size} أحدث")
     if (scans.isEmpty()) {
         NoteBlock("لا توجد عمليات محفوظة بعد. شغّل استطلاعاً أو بحثاً لتظهر هنا.", IntelColors.Blue, "LOG")
@@ -276,30 +328,8 @@ fun DataSection(store: LocalStore, dataVersion: Int, onDataChanged: () -> Unit) 
         }
     }
 
-    if (confirmErase) {
-        AlertDialog(
-            onDismissRequest = { confirmErase = false },
-            title = { Text("مسح كل البيانات المحلية؟", fontWeight = FontWeight.Bold) },
-            text = {
-                Text(
-                    "سيُحذف كل ما جمعته من كيانات وعلاقات وأدلة وعمليات وحالات. لا يمكن التراجع.",
-                    fontSize = 12.sp,
-                    lineHeight = 18.sp
-                )
-            },
-            confirmButton = {
-                TextButton(onClick = {
-                    confirmErase = false
-                    scope.launch {
-                        val done = withContext(Dispatchers.IO) { runCatching { store.clearAllData() }.isSuccess }
-                        status = if (done) "تم مسح قاعدة البيانات المحلية." else "تعذر مسح البيانات."
-                        scans = withContext(Dispatchers.IO) { runCatching { store.scans(20) }.getOrDefault(emptyList()) }
-                        onDataChanged()
-                    }
-                }) { Text("مسح نهائي", color = IntelColors.Red) }
-            },
-            dismissButton = { TextButton(onClick = { confirmErase = false }) { Text("إلغاء") } },
-            containerColor = IntelColors.PanelHigh
-        )
+
+        }
     }
+
 }
