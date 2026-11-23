@@ -21,6 +21,7 @@ import java.util.Locale
 
 data class ExternalSearchOutcome(
     val results: List<PublicProfileResult> = emptyList(),
+    val mediaResults: List<SearchMediaResult> = emptyList(),
     val warnings: List<String> = emptyList(),
     val providersAttempted: Int = 0,
     val providersResponded: Int = 0
@@ -39,9 +40,15 @@ data class ExternalNewsOutcome(
     val providersResponded: Int = 0
 )
 
+private data class SearchProviderBatch(
+    val results: List<PublicProfileResult> = emptyList(),
+    val media: List<SearchMediaResult> = emptyList(),
+    val warnings: List<String> = emptyList()
+)
+
 /**
- * REST adapters for the five user-configured general-search APIs.
- * A provider is called only when it is enabled and has at least one decryptable key.
+ * Public search adapters. Each selected provider returns results from its supported
+ * pages and media indexes. Key fallback improves resilience; it does not multiply quotas.
  */
 class ExternalApiSearchClient(private val settings: ApiProviderSettingsStore) {
     suspend fun search(
@@ -50,6 +57,8 @@ class ExternalApiSearchClient(private val settings: ApiProviderSettingsStore) {
         maxCalls: Int,
         maxResults: Int,
         includeImages: Boolean,
+        includeVideos: Boolean,
+        pageLimit: Int,
         onProgress: (String) -> Unit = {}
     ): ExternalSearchOutcome {
         val query = buildQuery(rawQuery, kind)
@@ -58,19 +67,20 @@ class ExternalApiSearchClient(private val settings: ApiProviderSettingsStore) {
         val selected = enabled
             .filter { settings.availableKeys(it).isNotEmpty() }
             .take(maxCalls.coerceIn(1, SEARCH_ORDER.size))
-
         if (selected.isEmpty()) {
             val warnings = if (enabled.isEmpty()) emptyList() else
                 listOf("المصادر الخارجية المفعّلة لا تحتوي على مفاتيح قابلة للاستخدام؛ راجع إعدادات المفاتيح.")
             return ExternalSearchOutcome(warnings = warnings)
         }
 
-        onProgress("استعلام محركات البحث الخارجية: " + selected.joinToString("، ") { it.name })
+        val resultLimit = maxResults.coerceIn(10, 100)
+        val pages = pageLimit.coerceIn(1, 5)
+        onProgress("تجميع نتائج " + selected.size + " محركات خارجية؛ حتى " + pages + " صفحات للمحركات الداعمة…")
         val calls = coroutineScope {
             selected.map { provider ->
                 async {
                     val result = callWithKeyFallback(provider, settings) { key ->
-                        queryProvider(provider, key, query, maxResults.coerceIn(1, 20), includeImages)
+                        queryProvider(provider, key, query, resultLimit, includeImages, includeVideos, pages)
                     }
                     Pair(provider, result)
                 }
@@ -78,20 +88,26 @@ class ExternalApiSearchClient(private val settings: ApiProviderSettingsStore) {
         }
 
         val results = mutableListOf<PublicProfileResult>()
+        val media = mutableListOf<SearchMediaResult>()
         val warnings = mutableListOf<String>()
-        withoutKeys.forEach { warnings += it.name + ": المصدر مفعّل لكن لم يُحفظ له مفتاح قابل للقراءة." }
+        withoutKeys.forEach { warnings += it.name + ": المصدر مفعّل لكن لا يوجد مفتاح محفوظ قابل للاستخدام." }
         var responded = 0
         calls.forEach { (provider, result) ->
             when (result) {
                 is ProviderCall.Success -> {
                     responded++
-                    results += result.value
+                    results += result.value.results
+                    media += result.value.media
+                    warnings += result.value.warnings
                 }
                 is ProviderCall.Failure -> warnings += provider.name + ": " + result.message
             }
         }
         return ExternalSearchOutcome(
-            results = results.distinctBy { canonicalUrl(it.url) }.take(maxResults.coerceAtLeast(1)),
+            results = results.distinctBy { canonicalUrl(it.url) }.take(resultLimit * selected.size),
+            mediaResults = media.distinctBy {
+                it.mediaId.ifBlank { canonicalUrl(it.pageUrl + "|" + it.thumbnailUrl.orEmpty()) }
+            },
             warnings = warnings.distinct(),
             providersAttempted = selected.size,
             providersResponded = responded
@@ -103,67 +119,165 @@ class ExternalApiSearchClient(private val settings: ApiProviderSettingsStore) {
         key: String,
         query: String,
         limit: Int,
-        includeImages: Boolean
-    ): List<PublicProfileResult> = withContext(Dispatchers.IO) {
-        val root = when (provider) {
+        includeImages: Boolean,
+        includeVideos: Boolean,
+        pageLimit: Int
+    ): SearchProviderBatch = withContext(Dispatchers.IO) {
+        val results = mutableListOf<PublicProfileResult>()
+        val media = mutableListOf<SearchMediaResult>()
+        val warnings = mutableListOf<String>()
+        when (provider) {
             ApiProviderId.SERP_API -> {
-                val url = queryUrl(
-                    "https://serpapi.com/search.json",
-                    linkedMapOf(
-                        "engine" to "google",
-                        "q" to query,
-                        "num" to limit.toString(),
-                        "api_key" to key
-                    )
-                )
-                requestJson(url)
+                var completedPages = 0
+                for (page in 0 until pageLimit) {
+                    try {
+                        val root = requestJson(
+                            queryUrl(
+                                "https://serpapi.com/search.json",
+                                linkedMapOf(
+                                    "engine" to "google",
+                                    "q" to query,
+                                    "num" to "10",
+                                    "start" to (page * 10).toString(),
+                                    "api_key" to key
+                                )
+                            )
+                        )
+                        detectLogicalError(provider, root)
+                        results += parseSearchResults(provider, root, includeImages)
+                        completedPages++
+                        if ((root.optJSONArray("organic_results")?.length() ?: 0) == 0) break
+                    } catch (error: Exception) {
+                        if (completedPages == 0) throw error
+                        warnings += "SerpApi: توقف ترقيم نتائج الويب بعد " + completedPages +
+                            " صفحة: " + safeErrorMessage(error)
+                        break
+                    }
+                }
+
+                if (includeImages) {
+                    runCatching {
+                        val root = requestJson(
+                            queryUrl(
+                                "https://serpapi.com/search.json",
+                                linkedMapOf("engine" to "google_images", "q" to query, "ijn" to "0", "api_key" to key)
+                            )
+                        )
+                        detectLogicalError(provider, root)
+                        media += parseSerpImages(root)
+                    }.onFailure { warnings += "SerpApi Images: " + safeErrorMessage(it as? Exception ?: Exception()) }
+                }
+                if (includeVideos) {
+                    runCatching {
+                        val root = requestJson(
+                            queryUrl(
+                                "https://serpapi.com/search.json",
+                                linkedMapOf("engine" to "youtube", "search_query" to rawMediaQuery(query), "api_key" to key)
+                            )
+                        )
+                        detectLogicalError(provider, root)
+                        media += parseSerpVideos(root, "YouTube")
+                    }.onFailure { warnings += "YouTube index: " + safeErrorMessage(it as? Exception ?: Exception()) }
+                    runCatching {
+                        val root = requestJson(
+                            queryUrl(
+                                "https://serpapi.com/search.json",
+                                linkedMapOf("engine" to "google_videos", "q" to query, "api_key" to key)
+                            )
+                        )
+                        detectLogicalError(provider, root)
+                        media += parseSerpVideos(root, "Google Videos")
+                    }.onFailure { warnings += "Google Videos: " + safeErrorMessage(it as? Exception ?: Exception()) }
+                }
             }
-            ApiProviderId.TAVILY -> requestJson(
-                "https://api.tavily.com/search",
-                method = "POST",
-                headers = mapOf("Authorization" to "Bearer " + key),
-                body = JSONObject()
-                    .put("query", query)
-                    .put("topic", "general")
-                    .put("search_depth", "basic")
-                    .put("max_results", limit)
-                    .put("include_answer", false)
-                    .put("include_raw_content", false)
-            )
-            ApiProviderId.TINYFISH -> requestJson(
-                queryUrl(
-                    "https://api.search.tinyfish.ai",
-                    linkedMapOf(
-                        "query" to query,
-                        "domain_type" to "web",
-                        "language" to if (containsArabic(query)) "ar" else "en"
-                    )
-                ),
-                headers = mapOf("X-API-Key" to key)
-            )
-            ApiProviderId.FIRECRAWL -> requestJson(
-                "https://api.firecrawl.dev/v2/search",
-                method = "POST",
-                headers = mapOf("Authorization" to "Bearer " + key),
-                body = JSONObject()
-                    .put("query", query)
-                    .put("limit", limit)
-                    .put("sources", JSONArray().put(JSONObject().put("type", "web")))
-            )
-            ApiProviderId.EXA -> requestJson(
-                "https://api.exa.ai/search",
-                method = "POST",
-                headers = mapOf("x-api-key" to key),
-                body = JSONObject()
-                    .put("query", query)
-                    .put("type", "auto")
-                    .put("numResults", limit)
-                    .put("contents", JSONObject().put("highlights", JSONObject().put("numSentences", 2)))
-            )
+            ApiProviderId.TAVILY -> {
+                val root = requestJson(
+                    "https://api.tavily.com/search",
+                    method = "POST",
+                    headers = mapOf("Authorization" to "Bearer " + key),
+                    body = JSONObject()
+                        .put("query", query)
+                        .put("topic", "general")
+                        .put("search_depth", "advanced")
+                        .put("max_results", minOf(20, limit))
+                        .put("include_answer", false)
+                        .put("include_raw_content", true)
+                        .put("include_images", includeImages)
+                )
+                detectLogicalError(provider, root)
+                results += parseSearchResults(provider, root, includeImages)
+                if (includeImages) media += parseTavilyImages(root)
+            }
+            ApiProviderId.TINYFISH -> {
+                var completedPages = 0
+                for (page in 0 until pageLimit) {
+                    try {
+                        val root = requestJson(
+                            queryUrl(
+                                "https://api.search.tinyfish.ai",
+                                linkedMapOf(
+                                    "query" to query,
+                                    "domain_type" to "web",
+                                    "language" to if (containsArabic(query)) "ar" else "en",
+                                    "page" to page.toString()
+                                )
+                            ),
+                            headers = mapOf("X-API-Key" to key)
+                        )
+                        detectLogicalError(provider, root)
+                        results += parseSearchResults(provider, root, includeImages)
+                        completedPages++
+                        if ((root.optJSONArray("results")?.length() ?: 0) == 0) break
+                    } catch (error: Exception) {
+                        if (completedPages == 0) throw error
+                        warnings += "TinyFish: توقف الترقيم بعد " + completedPages +
+                            " صفحة: " + safeErrorMessage(error)
+                        break
+                    }
+                }
+            }
+            ApiProviderId.FIRECRAWL -> {
+                val sourceTypes = JSONArray()
+                    .put(JSONObject().put("type", "web"))
+                    .put(JSONObject().put("type", "news"))
+                if (includeImages) sourceTypes.put(JSONObject().put("type", "images"))
+                val root = requestJson(
+                    "https://api.firecrawl.dev/v2/search",
+                    method = "POST",
+                    headers = mapOf("Authorization" to "Bearer " + key),
+                    body = JSONObject()
+                        .put("query", query)
+                        .put("limit", minOf(20, limit))
+                        .put("sources", sourceTypes)
+                )
+                detectLogicalError(provider, root)
+                results += parseSearchResults(provider, root, includeImages)
+                if (includeImages) media += parseFirecrawlImages(root)
+            }
+            ApiProviderId.EXA -> {
+                val root = requestJson(
+                    "https://api.exa.ai/search",
+                    method = "POST",
+                    headers = mapOf("x-api-key" to key),
+                    body = JSONObject()
+                        .put("query", query)
+                        .put("type", "auto")
+                        .put("numResults", minOf(100, limit))
+                        .put("contents", JSONObject()
+                            .put("text", JSONObject().put("maxCharacters", 12_000))
+                            .put("highlights", JSONObject().put("numSentences", 4)))
+                )
+                detectLogicalError(provider, root)
+                results += parseSearchResults(provider, root, includeImages)
+                if (includeImages) media += parseExaImages(root)
+            }
             else -> error("Provider is not a general-search source.")
         }
-        detectLogicalError(provider, root)
-        parseSearchResults(provider, root, includeImages)
+        SearchProviderBatch(
+            results = results.distinctBy { canonicalUrl(it.url) },
+            media = media.distinctBy { it.mediaId.ifBlank { canonicalUrl(it.pageUrl + "|" + it.thumbnailUrl.orEmpty()) } },
+            warnings = warnings
+        )
     }
 
     private fun parseSearchResults(
@@ -171,11 +285,17 @@ class ExternalApiSearchClient(private val settings: ApiProviderSettingsStore) {
         root: JSONObject,
         includeImages: Boolean
     ): List<PublicProfileResult> {
+        val data = root.optJSONObject("data")
         val items = when (provider) {
             ApiProviderId.SERP_API -> root.optJSONArray("organic_results") ?: JSONArray()
             ApiProviderId.TAVILY -> root.optJSONArray("results") ?: JSONArray()
             ApiProviderId.TINYFISH -> root.optJSONArray("results") ?: JSONArray()
-            ApiProviderId.FIRECRAWL -> root.optJSONObject("data")?.optJSONArray("web") ?: JSONArray()
+            ApiProviderId.FIRECRAWL -> JSONArray().apply {
+                val web = data?.optJSONArray("web") ?: JSONArray()
+                val news = data?.optJSONArray("news") ?: JSONArray()
+                for (i in 0 until web.length()) put(web.optJSONObject(i) ?: continue)
+                for (i in 0 until news.length()) put(news.optJSONObject(i) ?: continue)
+            }
             ApiProviderId.EXA -> root.optJSONArray("results") ?: JSONArray()
             else -> JSONArray()
         }
@@ -185,12 +305,10 @@ class ExternalApiSearchClient(private val settings: ApiProviderSettingsStore) {
                 val item = items.optJSONObject(index) ?: continue
                 val url = when (provider) {
                     ApiProviderId.SERP_API -> item.optString("link")
-                    ApiProviderId.TINYFISH -> item.optString("url")
-                    ApiProviderId.FIRECRAWL -> item.optString("url")
                     else -> item.optString("url")
                 }.takeIf(::isHttpsUrl) ?: continue
                 val title = item.optString("title").trim().takeIf(String::isNotBlank) ?: continue
-                val description = when (provider) {
+                val providerText = when (provider) {
                     ApiProviderId.SERP_API -> item.optString("snippet")
                     ApiProviderId.TAVILY -> item.optString("content")
                     ApiProviderId.TINYFISH -> item.optString("snippet")
@@ -202,7 +320,13 @@ class ExternalApiSearchClient(private val settings: ApiProviderSettingsStore) {
                         else (0 until highlights.length()).mapNotNull { highlights.optString(it).takeIf(String::isNotBlank) }.joinToString(" ")
                     }
                     else -> ""
-                }.trim().take(700)
+                }.trim()
+                val rawText = when (provider) {
+                    ApiProviderId.TAVILY -> item.optString("raw_content")
+                    ApiProviderId.EXA -> item.optString("text")
+                    ApiProviderId.FIRECRAWL -> item.optString("markdown").ifBlank { item.optString("content") }
+                    else -> ""
+                }.trim()
                 val image = when (provider) {
                     ApiProviderId.SERP_API -> item.optString("thumbnail")
                     ApiProviderId.EXA -> item.optString("image")
@@ -212,7 +336,7 @@ class ExternalApiSearchClient(private val settings: ApiProviderSettingsStore) {
                     PublicProfileResult(
                         provider = label,
                         title = title.take(240),
-                        description = description,
+                        description = providerText.take(900),
                         url = url,
                         confidence = when (provider) {
                             ApiProviderId.SERP_API -> 76
@@ -222,12 +346,131 @@ class ExternalApiSearchClient(private val settings: ApiProviderSettingsStore) {
                             ApiProviderId.EXA -> 76
                             else -> 65
                         },
-                        imageUrl = image
+                        imageUrl = image,
+                        fullText = rawText.take(60_000)
                     )
                 )
             }
         }
     }
+
+    private fun parseSerpImages(root: JSONObject): List<SearchMediaResult> {
+        val items = root.optJSONArray("images_results") ?: JSONArray()
+        return buildList {
+            for (index in 0 until items.length()) {
+                val item = items.optJSONObject(index) ?: continue
+                val thumbnail = item.optString("thumbnail").ifBlank { item.optString("original") }
+                val page = item.optString("link").ifBlank { item.optString("original") }
+                if (!isHttpsUrl(thumbnail) || !isHttpsUrl(page)) continue
+                add(SearchMediaResult(
+                    provider = "SerpApi Images",
+                    mediaType = "IMAGE",
+                    title = item.optString("title").ifBlank { "صورة مفهرسة" }.take(200),
+                    pageUrl = page,
+                    thumbnailUrl = thumbnail,
+                    description = item.optString("source").take(240)
+                ))
+            }
+        }
+    }
+
+    private fun parseSerpVideos(root: JSONObject, providerName: String): List<SearchMediaResult> {
+        val items = root.optJSONArray("video_results") ?: root.optJSONArray("videos_results") ?: JSONArray()
+        return buildList {
+            for (index in 0 until items.length()) {
+                val item = items.optJSONObject(index) ?: continue
+                val link = item.optString("link").ifBlank { item.optString("url") }
+                val thumbnail = thumbnailValue(item.opt("thumbnail"))
+                if (!isHttpsUrl(link)) continue
+                add(SearchMediaResult(
+                    provider = providerName,
+                    mediaType = "VIDEO",
+                    title = item.optString("title").ifBlank { "فيديو" }.take(240),
+                    pageUrl = link,
+                    thumbnailUrl = thumbnail?.takeIf(::isHttpsUrl),
+                    description = item.optString("description").ifBlank { item.optString("snippet") }.take(500),
+                    mediaId = item.optString("video_id")
+                ))
+            }
+        }
+    }
+
+    private fun parseTavilyImages(root: JSONObject): List<SearchMediaResult> {
+        val items = root.optJSONArray("images") ?: JSONArray()
+        return buildList {
+            for (index in 0 until items.length()) {
+                val item = items.optJSONObject(index) ?: continue
+                val url = item.optString("url")
+                if (!isHttpsUrl(url)) continue
+                add(SearchMediaResult(
+                    provider = "Tavily Images",
+                    mediaType = "IMAGE",
+                    title = item.optString("description").ifBlank { "صورة مفهرسة" }.take(200),
+                    pageUrl = url,
+                    thumbnailUrl = url,
+                    description = item.optString("description").take(400)
+                ))
+            }
+        }
+    }
+
+    private fun parseFirecrawlImages(root: JSONObject): List<SearchMediaResult> {
+        val items = root.optJSONObject("data")?.optJSONArray("images") ?: JSONArray()
+        return buildList {
+            for (index in 0 until items.length()) {
+                val item = items.optJSONObject(index) ?: continue
+                val url = item.optString("url").takeIf(::isHttpsUrl) ?: continue
+                val sourceUrl = item.optString("sourceURL").ifBlank { item.optString("link") }.ifBlank { url }
+                add(SearchMediaResult(
+                    provider = "Firecrawl Images",
+                    mediaType = "IMAGE",
+                    title = item.optString("title").ifBlank { "صورة مفهرسة" }.take(200),
+                    pageUrl = sourceUrl,
+                    thumbnailUrl = url,
+                    description = item.optString("description").take(400)
+                ))
+            }
+        }
+    }
+
+    private fun parseExaImages(root: JSONObject): List<SearchMediaResult> {
+        val items = root.optJSONArray("results") ?: JSONArray()
+        return buildList {
+            for (index in 0 until items.length()) {
+                val item = items.optJSONObject(index) ?: continue
+                val page = item.optString("url").takeIf(::isHttpsUrl) ?: continue
+                val direct = item.optString("image").takeIf(::isHttpsUrl)
+                if (direct != null) add(SearchMediaResult(
+                    provider = "Exa",
+                    mediaType = "IMAGE",
+                    title = item.optString("title").ifBlank { "صورة مرتبطة بالصفحة" }.take(200),
+                    pageUrl = page,
+                    thumbnailUrl = direct
+                ))
+                val links = item.optJSONArray("imageLinks") ?: item.optJSONArray("richImageLinks") ?: JSONArray()
+                for (i in 0 until links.length()) {
+                    val imageUrl = links.optString(i).takeIf(::isHttpsUrl) ?: continue
+                    add(SearchMediaResult(
+                        provider = "Exa",
+                        mediaType = "IMAGE",
+                        title = item.optString("title").ifBlank { "صورة مرتبطة بالصفحة" }.take(200),
+                        pageUrl = page,
+                        thumbnailUrl = imageUrl
+                    ))
+                }
+            }
+        }
+    }
+
+    private fun thumbnailValue(value: Any?): String? = when (value) {
+        is String -> value
+        is JSONObject -> value.optString("static").ifBlank { value.optString("url") }.ifBlank { value.optString("link") }
+        is JSONArray -> {
+            val first = value.optJSONObject(0)
+            first?.optString("url")?.ifBlank { first.optString("static") }
+        }
+        else -> null
+    }?.takeIf(String::isNotBlank)
 
     companion object {
         val SEARCH_ORDER = listOf(
@@ -239,6 +482,8 @@ class ExternalApiSearchClient(private val settings: ApiProviderSettingsStore) {
         )
     }
 }
+
+private fun rawMediaQuery(query: String): String = query.trim().take(180)
 
 /**
  * REST adapters for the four user-configured news APIs. Each enabled, configured provider
