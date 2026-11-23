@@ -105,7 +105,7 @@ class MultiSourceNewsEngine(private val appContext: Context? = null) {
             require(startTimeMillis <= endTimeMillis) { "تاريخ البداية يجب أن يسبق تاريخ النهاية." }
         }
         val started = System.nanoTime()
-        val limit = maxRecords.coerceIn(1, 200)
+        val limit = maxRecords.coerceIn(1, 500)
         val hasRange = startTimeMillis != null && endTimeMillis != null
         val apiWindowSupported = !hasRange ||
             startTimeMillis!! >= System.currentTimeMillis() - 89L * 24L * 60L * 60L * 1000L
