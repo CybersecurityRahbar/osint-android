@@ -52,6 +52,9 @@ import com.cyberphantom.osintworkbench.data.StoreStats
 import com.cyberphantom.osintworkbench.ui.design.Hairline
 import com.cyberphantom.osintworkbench.ui.design.IntelColors
 import com.cyberphantom.osintworkbench.ui.design.MicroLabel
+import com.cyberphantom.osintworkbench.ui.design.NeonAtmosphereBackground
+import com.cyberphantom.osintworkbench.ui.design.WorkbenchThemeState
+import com.cyberphantom.osintworkbench.ui.design.WorkbenchVisualTheme
 import com.cyberphantom.osintworkbench.ui.screens.CasesScreen
 import com.cyberphantom.osintworkbench.ui.screens.HomeScreen
 import com.cyberphantom.osintworkbench.ui.screens.NetworkScreen
@@ -108,12 +111,15 @@ fun WorkbenchApp() {
 
     LaunchedEffect(Unit) { refresh() }
 
-    Column(
-        Modifier
-            .fillMaxSize()
-            .background(IntelColors.Base)
-            .safeDrawingPadding()
-    ) {
+    Box(Modifier.fillMaxSize().background(IntelColors.Base)) {
+        if (WorkbenchThemeState.theme == WorkbenchVisualTheme.NEON && WorkbenchThemeState.motionEnabled) {
+            NeonAtmosphereBackground(Modifier.fillMaxSize())
+        }
+        Column(
+            Modifier
+                .fillMaxSize()
+                .safeDrawingPadding()
+        ) {
         OpsHeader(activeTab = tab, onOpenSettings = { tab = WorkbenchTab.SETTINGS })
         Box(Modifier.weight(1f).fillMaxWidth()) {
             when (tab) {
@@ -158,7 +164,8 @@ fun WorkbenchApp() {
                 )
             }
         }
-        BottomRail(selected = tab, onSelect = { tab = it })
+        BottomRail(selected = tab, onSelect = { WorkbenchThemeState.tap(null); tab = it })
+        }
     }
 }
 
@@ -192,7 +199,12 @@ private fun OpsHeader(activeTab: WorkbenchTab, onOpenSettings: () -> Unit) {
     }
     val utc = runCatching { utcFormatter.format(Date(now)) }.getOrDefault("--:--:--")
 
-    Column(Modifier.fillMaxWidth().background(IntelColors.Void)) {
+    Column(
+        Modifier.fillMaxWidth().background(
+            if (WorkbenchThemeState.theme == WorkbenchVisualTheme.NEON) IntelColors.Void.copy(alpha = 0.88f)
+            else IntelColors.Void
+        )
+    ) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(start = 14.dp, end = 10.dp, top = 11.dp, bottom = 10.dp),
             verticalAlignment = Alignment.CenterVertically
@@ -245,7 +257,10 @@ private fun OpsHeader(activeTab: WorkbenchTab, onOpenSettings: () -> Unit) {
 
 @Composable
 private fun BottomRail(selected: WorkbenchTab, onSelect: (WorkbenchTab) -> Unit) {
-    Surface(color = IntelColors.Void) {
+    Surface(
+        color = if (WorkbenchThemeState.theme == WorkbenchVisualTheme.NEON) IntelColors.Void.copy(alpha = 0.90f)
+        else IntelColors.Void
+    ) {
         Column {
             Hairline()
             Row(Modifier.fillMaxWidth().height(56.dp)) {
