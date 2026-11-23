@@ -75,12 +75,21 @@ class ExternalApiSearchClient(private val settings: ApiProviderSettingsStore) {
 
         val resultLimit = maxResults.coerceIn(10, 500)
         val pages = pageLimit.coerceIn(1, 5)
-        onProgress("تجميع نتائج " + selected.size + " محركات خارجية؛ حتى " + pages + " صفحات للمحركات الداعمة…")
+        val serpApiBudget = if (ApiProviderId.SERP_API in selected) {
+            SerpApiRequestBudget(settings.serpApiRequestLimit())
+        } else null
+        onProgress(
+            "تجميع نتائج " + selected.size + " محركات خارجية؛ حتى " + pages +
+                " صفحات ويب، وميزانية SerpApi = " + (serpApiBudget?.maxRequests ?: 0) + " طلبات…"
+        )
         val calls = coroutineScope {
             selected.map { provider ->
                 async {
                     val result = callWithKeyFallback(provider, settings) { key ->
-                        queryProvider(provider, key, query, resultLimit, includeImages, includeVideos, pages)
+                        queryProvider(
+                            provider, key, query, resultLimit, includeImages, includeVideos, pages,
+                            serpApiBudget = if (provider == ApiProviderId.SERP_API) serpApiBudget else null
+                        )
                     }
                     Pair(provider, result)
                 }
@@ -103,6 +112,10 @@ class ExternalApiSearchClient(private val settings: ApiProviderSettingsStore) {
                 is ProviderCall.Failure -> warnings += provider.name + ": " + result.message
             }
         }
+        if (serpApiBudget != null) {
+            warnings += "SerpApi: بدأ التطبيق " + serpApiBudget.attemptedRequests() + " من " +
+                serpApiBudget.maxRequests + " اتصالات مسموحة. هذا عداد محاولات الاتصال وليس كشف الاعتمادات المخصومة."
+        }
         return ExternalSearchOutcome(
             results = results.distinctBy { canonicalUrl(it.url) }.take(resultLimit * selected.size),
             mediaResults = media.distinctBy {
@@ -121,7 +134,8 @@ class ExternalApiSearchClient(private val settings: ApiProviderSettingsStore) {
         limit: Int,
         includeImages: Boolean,
         includeVideos: Boolean,
-        pageLimit: Int
+        pageLimit: Int,
+        serpApiBudget: SerpApiRequestBudget? = null
     ): SearchProviderBatch = withContext(Dispatchers.IO) {
         val results = mutableListOf<PublicProfileResult>()
         val media = mutableListOf<SearchMediaResult>()
@@ -134,7 +148,7 @@ class ExternalApiSearchClient(private val settings: ApiProviderSettingsStore) {
                 var indexedPages = 0
                 for (page in 0 until pageLimit) {
                     try {
-                        val root = requestJson(
+                        val root = requestSerpApiJson(
                             queryUrl(
                                 "https://serpapi.com/search.json",
                                 linkedMapOf(
@@ -146,7 +160,8 @@ class ExternalApiSearchClient(private val settings: ApiProviderSettingsStore) {
                                     "start" to (page * 100).toString(),
                                     "api_key" to key
                                 )
-                            )
+                            ),
+                            requireNotNull(serpApiBudget)
                         )
                         detectLogicalError(provider, root)
                         val pageResults = parseSearchResults(provider, root, includeImages)
@@ -169,7 +184,7 @@ class ExternalApiSearchClient(private val settings: ApiProviderSettingsStore) {
                     var fallbackPages = 0
                     for (page in 0 until pageLimit) {
                         try {
-                            val root = requestJson(
+                            val root = requestSerpApiJson(
                                 queryUrl(
                                     "https://serpapi.com/search.json",
                                     linkedMapOf(
@@ -178,7 +193,8 @@ class ExternalApiSearchClient(private val settings: ApiProviderSettingsStore) {
                                         "start" to (page * 10).toString(),
                                         "api_key" to key
                                     )
-                                )
+                                ),
+                                requireNotNull(serpApiBudget)
                             )
                             detectLogicalError(provider, root)
                             val pageResults = parseSearchResults(provider, root, includeImages)
@@ -197,11 +213,12 @@ class ExternalApiSearchClient(private val settings: ApiProviderSettingsStore) {
 
                 if (includeImages) {
                     runCatching {
-                        val root = requestJson(
+                        val root = requestSerpApiJson(
                             queryUrl(
                                 "https://serpapi.com/search.json",
                                 linkedMapOf("engine" to "google_images", "q" to query, "ijn" to "0", "api_key" to key)
-                            )
+                            ),
+                            requireNotNull(serpApiBudget)
                         )
                         detectLogicalError(provider, root)
                         media += parseSerpImages(root)
@@ -211,7 +228,7 @@ class ExternalApiSearchClient(private val settings: ApiProviderSettingsStore) {
                 if (includeVideos) {
                     val beforeVideos = media.size
                     runCatching {
-                        val root = requestJson(
+                        val root = requestSerpApiJson(
                             queryUrl(
                                 "https://serpapi.com/search.json",
                                 linkedMapOf(
@@ -223,7 +240,8 @@ class ExternalApiSearchClient(private val settings: ApiProviderSettingsStore) {
                                     "start" to "0",
                                     "api_key" to key
                                 )
-                            )
+                            ),
+                            requireNotNull(serpApiBudget)
                         )
                         detectLogicalError(provider, root)
                         media += parseSerpVideos(root, "SerpApi Search Index Videos")
@@ -233,21 +251,23 @@ class ExternalApiSearchClient(private val settings: ApiProviderSettingsStore) {
                     // Use dedicated YouTube and Google Video indexes only as a fallback.
                     if (media.size == beforeVideos) {
                         runCatching {
-                            val root = requestJson(
+                            val root = requestSerpApiJson(
                                 queryUrl(
                                     "https://serpapi.com/search.json",
                                     linkedMapOf("engine" to "youtube", "search_query" to rawMediaQuery(query), "api_key" to key)
-                                )
+                                ),
+                                requireNotNull(serpApiBudget)
                             )
                             detectLogicalError(provider, root)
                             media += parseSerpVideos(root, "YouTube")
                         }.onFailure { warnings += "YouTube index: " + safeErrorMessage(it as? Exception ?: Exception()) }
                         runCatching {
-                            val root = requestJson(
+                            val root = requestSerpApiJson(
                                 queryUrl(
                                     "https://serpapi.com/search.json",
                                     linkedMapOf("engine" to "google_videos", "q" to query, "api_key" to key)
-                                )
+                                ),
+                                requireNotNull(serpApiBudget)
                             )
                             detectLogicalError(provider, root)
                             media += parseSerpVideos(root, "Google Videos")
@@ -773,6 +793,11 @@ private sealed class ProviderCall<out T> {
 }
 
 private class ApiProviderHttpException(val status: Int) : Exception("HTTP " + status)
+
+private fun requestSerpApiJson(endpoint: String, budget: SerpApiRequestBudget): JSONObject {
+    if (!budget.tryReserveRequest()) throw SerpApiRequestBudgetExceededException(budget.maxRequests)
+    return requestJson(endpoint)
+}
 
 private suspend fun <T> callWithKeyFallback(
     provider: ApiProviderId,

@@ -122,6 +122,19 @@ class ApiProviderSettingsStore(context: Context) {
      * Individual providers may return fewer records because of quotas, paging, or indexing coverage.
      */
     @Synchronized
+    fun serpApiRequestLimit(): Int = preferences.getInt(
+        KEY_SERP_API_REQUEST_LIMIT,
+        DEFAULT_SERP_API_REQUEST_LIMIT
+    ).coerceIn(MIN_SERP_API_REQUEST_LIMIT, MAX_SERP_API_REQUEST_LIMIT)
+
+    @Synchronized
+    fun setSerpApiRequestLimit(value: Int) {
+        preferences.edit()
+            .putInt(KEY_SERP_API_REQUEST_LIMIT, value.coerceIn(MIN_SERP_API_REQUEST_LIMIT, MAX_SERP_API_REQUEST_LIMIT))
+            .apply()
+    }
+
+    @Synchronized
     fun searchResultLimit(): Int = normalizeSearchResultLimit(
         preferences.getInt(KEY_SEARCH_RESULT_LIMIT, DEFAULT_SEARCH_RESULT_LIMIT)
     )
@@ -190,10 +203,14 @@ class ApiProviderSettingsStore(context: Context) {
         const val DEFAULT_SEARCH_RESULT_LIMIT = 100
         const val MIN_SEARCH_RESULT_LIMIT = 10
         const val MAX_SEARCH_RESULT_LIMIT = 500
+        const val DEFAULT_SERP_API_REQUEST_LIMIT = 4
+        const val MIN_SERP_API_REQUEST_LIMIT = 1
+        const val MAX_SERP_API_REQUEST_LIMIT = 10
         private const val DEFAULT_EXTERNAL_PAGE_LIMIT = 2
         private const val KEY_EXTERNAL_PROVIDER_LIMIT = "external_provider_limit"
         private const val KEY_EXTERNAL_PAGE_LIMIT = "external_page_limit"
         private const val KEY_SEARCH_RESULT_LIMIT = "search_result_limit"
+        private const val KEY_SERP_API_REQUEST_LIMIT = "serpapi_request_limit"
         private const val KEY_ALIAS = "osint_external_api_aes_v1"
         private const val ANDROID_KEYSTORE = "AndroidKeyStore"
         private const val TRANSFORMATION = "AES/GCM/NoPadding"

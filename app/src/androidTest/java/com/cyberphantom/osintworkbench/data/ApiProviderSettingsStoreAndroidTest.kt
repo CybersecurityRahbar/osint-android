@@ -66,6 +66,12 @@ class ApiProviderSettingsStoreAndroidTest {
             assertEquals(10, store.searchResultLimit())
             store.setSearchResultLimit(999)
             assertEquals(ApiProviderSettingsStore.MAX_SEARCH_RESULT_LIMIT, store.searchResultLimit())
+            store.setSerpApiRequestLimit(7)
+            assertEquals(7, store.serpApiRequestLimit())
+            store.setSerpApiRequestLimit(99)
+            assertEquals(ApiProviderSettingsStore.MAX_SERP_API_REQUEST_LIMIT, store.serpApiRequestLimit())
+            store.setSerpApiRequestLimit(-3)
+            assertEquals(ApiProviderSettingsStore.MIN_SERP_API_REQUEST_LIMIT, store.serpApiRequestLimit())
         } finally {
             (1..ApiProviderSettingsStore.KEY_SLOTS).forEach { store.clearKey(provider, it) }
             store.setEnabled(provider, false)
@@ -73,6 +79,7 @@ class ApiProviderSettingsStoreAndroidTest {
             store.setExternalProviderLimit(ApiProviderSettingsStore.DEFAULT_SEARCH_REQUEST_LIMIT)
             store.setExternalPageLimit(2)
             store.setSearchResultLimit(ApiProviderSettingsStore.DEFAULT_SEARCH_RESULT_LIMIT)
+            store.setSerpApiRequestLimit(ApiProviderSettingsStore.DEFAULT_SERP_API_REQUEST_LIMIT)
         }
     }
 }

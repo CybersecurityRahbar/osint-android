@@ -2,9 +2,10 @@
 
 **OSINT Workbench** is an offline-first Android OSINT workbench for collecting publicly available information, preserving evidence, and building explainable technical relationships without a private backend or a bundled large language model.
 
-> **Active preview: v0.11.1-preview.** This build addresses field-test failures in news parsing, username classification, public search extraction, and private-source session separation. It remains an actively developed prototype, not a complete replacement for SpiderFoot, Maltego, or a dedicated vulnerability scanner.
+> **Active preview: v0.11.2-preview.** This build addresses field-test failures in news parsing, username classification, public search extraction, and private-source session separation. It remains an actively developed prototype, not a complete replacement for SpiderFoot, Maltego, or a dedicated vulnerability scanner.
 
 - **Flexible search target.** Choose any integer from 10 to 500 for identifier and news results using either a numeric field or a slider; the selection is saved locally. This is a result cap, not a literal count of HTTP/API calls.
+- **Strict SerpApi request budget.** Set a separate per-identifier-search ceiling from 1 to 10 outbound SerpApi calls (default 4). The same budget covers web pages, image search, video search, and fallbacks. Failed attempts consume the local cap but are not necessarily billed by SerpApi.
 - **Brushed-steel interface.** The dark graphite console now uses polished steel gradients and bevel-like borders, brighter legible text, metallic dividers, and functional cyan, violet, blue, green and amber accents. Home evidence, research results, reconnaissance records, case cards, statistics and mode controls share the same visual language.
 - **Email authentication posture.** SPF, DMARC and eight common DKIM selectors are inspected over public DNS, with explicit "not observed" records and risk notes for `+all`, `p= none`, lookup-limit overruns and missing records.
 - **Archive.org catalogue search** in addition to Wayback CDX: archived texts and media related to the domain, each with its source URL.

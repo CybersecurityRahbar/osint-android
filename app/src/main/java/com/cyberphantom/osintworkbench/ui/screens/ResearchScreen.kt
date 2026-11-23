@@ -123,6 +123,8 @@ fun ResearchScreen(
     var externalPageLimit by rememberSaveable { mutableStateOf(apiProviderSettings.externalPageLimit()) }
     var searchResultLimit by rememberSaveable { mutableStateOf(apiProviderSettings.searchResultLimit()) }
     var searchResultLimitInput by rememberSaveable { mutableStateOf(searchResultLimit.toString()) }
+    var serpApiRequestLimit by rememberSaveable { mutableStateOf(apiProviderSettings.serpApiRequestLimit()) }
+    var serpApiRequestLimitInput by rememberSaveable { mutableStateOf(serpApiRequestLimit.toString()) }
     var mode by rememberSaveable { mutableStateOf(if (startInNews) ResearchMode.NEWS else ResearchMode.IDENTIFIERS) }
     var query by rememberSaveable { mutableStateOf(initialQuery) }
     var kind by rememberSaveable { mutableStateOf(IdentifierKind.NAME) }
@@ -153,6 +155,16 @@ fun ResearchScreen(
         )
         searchResultLimit = safeValue
         apiProviderSettings.setSearchResultLimit(safeValue)
+    }
+
+    fun saveSerpApiRequestLimit(value: Int) {
+        val safeValue = value.coerceIn(
+            ApiProviderSettingsStore.MIN_SERP_API_REQUEST_LIMIT,
+            ApiProviderSettingsStore.MAX_SERP_API_REQUEST_LIMIT
+        )
+        serpApiRequestLimit = safeValue
+        serpApiRequestLimitInput = safeValue.toString()
+        apiProviderSettings.setSerpApiRequestLimit(safeValue)
     }
 
     val state = remember { PublicResearchEngine() }
@@ -314,6 +326,66 @@ fun ResearchScreen(
                     accent = IntelColors.Signal,
                     modifier = Modifier.fillMaxWidth()
                 )
+                if (mode == ResearchMode.IDENTIFIERS) {
+                    SectionBar(
+                        "SERPAPI REQUESTS",
+                        "الحد الأقصى لطلبات SerpApi في البحث الواحد",
+                        "$serpApiRequestLimit / ${ApiProviderSettingsStore.MAX_SERP_API_REQUEST_LIMIT}",
+                        accent
+                    )
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Column(Modifier.weight(1f)) {
+                            Text("حدد عدد الاتصالات المسموح بها", color = IntelColors.TextFaint, fontSize = 9.sp)
+                            Slider(
+                                value = serpApiRequestLimit.toFloat(),
+                                onValueChange = { selected ->
+                                    val next = selected.roundToInt().coerceIn(
+                                        ApiProviderSettingsStore.MIN_SERP_API_REQUEST_LIMIT,
+                                        ApiProviderSettingsStore.MAX_SERP_API_REQUEST_LIMIT
+                                    )
+                                    if (next != serpApiRequestLimit) {
+                                        serpApiRequestLimit = next
+                                        serpApiRequestLimitInput = next.toString()
+                                    }
+                                },
+                                onValueChangeFinished = {
+                                    apiProviderSettings.setSerpApiRequestLimit(serpApiRequestLimit)
+                                },
+                                valueRange = ApiProviderSettingsStore.MIN_SERP_API_REQUEST_LIMIT.toFloat()..
+                                    ApiProviderSettingsStore.MAX_SERP_API_REQUEST_LIMIT.toFloat(),
+                                steps = ApiProviderSettingsStore.MAX_SERP_API_REQUEST_LIMIT -
+                                    ApiProviderSettingsStore.MIN_SERP_API_REQUEST_LIMIT - 1
+                            )
+                        }
+                        IntelField(
+                            value = serpApiRequestLimitInput,
+                            onValueChange = { rawValue ->
+                                val digits = normalizeSearchLimitDigits(rawValue).take(2)
+                                serpApiRequestLimitInput = digits
+                                val entered = digits.toIntOrNull()
+                                if (entered != null &&
+                                    entered in ApiProviderSettingsStore.MIN_SERP_API_REQUEST_LIMIT..
+                                        ApiProviderSettingsStore.MAX_SERP_API_REQUEST_LIMIT
+                                ) {
+                                    saveSerpApiRequestLimit(entered)
+                                }
+                            },
+                            label = "الطلبات",
+                            modifier = Modifier.weight(0.36f).onFocusChanged { focus ->
+                                if (!focus.isFocused) serpApiRequestLimitInput = serpApiRequestLimit.toString()
+                            },
+                            placeholder = "1–10",
+                            mono = true,
+                            keyboardType = KeyboardType.Number
+                        )
+                    }
+                    Text(
+                        "حد صارم لعدد اتصالات SerpApi التي يبدأها التطبيق في كل بحث، ويشمل الويب والصور والفيديو والبدائل. كل محاولة تستهلك خانة محلية حتى لو فشلت؛ أما الاعتمادات المخصومة في حساب SerpApi فتتبع الطلبات الناجحة والكاش. لا يشمل هذا الحد بقية مزودي API.",
+                        color = IntelColors.Amber,
+                        fontSize = 9.sp,
+                        lineHeight = 14.sp
+                    )
+                }
                 SectionBar("PAGES", "دفعات النتائج لكل محرك", externalPageLimit.toString() + " / 5", accent)
                 Slider(
                     value = externalPageLimit.toFloat(),
