@@ -237,7 +237,7 @@ fun ResearchScreen(
                     steps = 3
                 )
                 Text(
-                    "تقدير SerpApi الحالي: عدد صفحات الويب (" + externalPageLimit + ") + طلب صور + طلب YouTube + طلب فيديوهات ويب عند تفعيل الوسائط. كل طلب غير مخزّن قد يستهلك رصيداً مستقلاً؛ خفّض الصفحات أو أوقف الوسائط لتقليل التكلفة. بقية المزودين قد يعيدون عدة نتائج في طلب واحد.",
+                    "كل صفحة ويب من SerpApi تطلب حتى 100 نتيجة. تقدير الرصيد: " + externalPageLimit + " صفحات ويب + طلب صور + طلب YouTube + طلب فيديوهات ويب عند تفعيل الوسائط. كل طلب غير مخزّن قد يستهلك رصيداً مستقلاً؛ خفّض الصفحات أو أوقف الوسائط لتقليل التكلفة. بقية المزودين قد يعيدون عدة نتائج في طلب واحد.",
                     color = IntelColors.Amber,
                     fontSize = 9.sp,
                     lineHeight = 14.sp
@@ -322,7 +322,7 @@ fun ResearchScreen(
                                 try {
                                     val result = MultiSourceNewsEngine(context).search(
                                         query = query.trim(),
-                                        maxRecords = 60,
+                                        maxRecords = 120,
                                         includeImages = includeImages,
                                         startTimeMillis = if (newsRangeEnabled) newsFromMillis else null,
                                         endTimeMillis = if (newsRangeEnabled) newsToMillis else null,
@@ -972,7 +972,7 @@ private suspend fun persistIdentifierSearch(
 ) = withContext(Dispatchers.IO) {
     val started = System.currentTimeMillis()
     val root = store.upsertEntity(query, "IDENTIFIER_${kind.name}", "User supplied", 90)
-    report.results.take(60).forEach { item ->
+    report.results.take(200).forEach { item ->
         val node = store.upsertEntity(item.url, "PUBLIC_WEB_RESULT@$query", item.provider, item.confidence)
         store.addEdge(root, node, "LISTED_IN_PUBLIC_WEB_INDEX", item.provider, item.confidence)
     }
@@ -1004,7 +1004,7 @@ private suspend fun persistIdentifierSearch(
 
 private suspend fun persistNews(store: LocalStore, result: NewsSearchResult) = withContext(Dispatchers.IO) {
     val root = store.upsertEntity(result.query, "NEWS_QUERY", "Multi-source news", 70)
-    result.articles.take(40).forEach { article ->
+    result.articles.take(200).forEach { article ->
         val node = store.upsertEntity(article.url, "NEWS_ARTICLE@${result.query}", article.provider, 60)
         store.addEdge(root, node, "REPORTED_BY", article.provider, 60)
     }
