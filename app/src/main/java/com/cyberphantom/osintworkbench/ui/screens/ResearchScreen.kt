@@ -29,6 +29,8 @@ import androidx.compose.material.icons.filled.Fingerprint
 import androidx.compose.material.icons.filled.ManageSearch
 import androidx.compose.material.icons.filled.WarningAmber
 import androidx.compose.material3.Icon
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -120,6 +122,7 @@ fun ResearchScreen(
     var externalProviderLimit by rememberSaveable { mutableStateOf(apiProviderSettings.externalProviderLimit()) }
     var externalPageLimit by rememberSaveable { mutableStateOf(apiProviderSettings.externalPageLimit()) }
     var searchResultLimit by rememberSaveable { mutableStateOf(apiProviderSettings.searchResultLimit()) }
+    var searchResultLimitInput by rememberSaveable { mutableStateOf(searchResultLimit.toString()) }
     var mode by rememberSaveable { mutableStateOf(if (startInNews) ResearchMode.NEWS else ResearchMode.IDENTIFIERS) }
     var query by rememberSaveable { mutableStateOf(initialQuery) }
     var kind by rememberSaveable { mutableStateOf(IdentifierKind.NAME) }
@@ -142,6 +145,15 @@ fun ResearchScreen(
     var phoneMeta by remember { mutableStateOf<String?>(null) }
     var news by remember { mutableStateOf<NewsSearchResult?>(null) }
     var pendingJson by remember { mutableStateOf("") }
+
+    fun saveSearchResultLimit(value: Int) {
+        val safeValue = value.coerceIn(
+            ApiProviderSettingsStore.MIN_SEARCH_RESULT_LIMIT,
+            ApiProviderSettingsStore.MAX_SEARCH_RESULT_LIMIT
+        )
+        searchResultLimit = safeValue
+        apiProviderSettings.setSearchResultLimit(safeValue)
+    }
 
     val state = remember { PublicResearchEngine() }
     val links = remember(query, kind) {
@@ -199,22 +211,75 @@ fun ResearchScreen(
         if (mode != ResearchMode.PRIVATE_SOURCES) {
             val accent = if (mode == ResearchMode.NEWS) IntelColors.Blue else IntelColors.Violet
             IntelPanel(accent = accent) {
-                SectionBar("RESULTS", "عدد النتائج المستهدفة في البحث", searchResultLimit.toString(), accent)
-                Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
-                    listOf(10, 50, 100, 200, 500).forEach { limit ->
-                        ModeChip(
-                            selected = searchResultLimit == limit,
-                            label = limit.toString(),
-                            onClick = {
-                                searchResultLimit = limit
-                                apiProviderSettings.setSearchResultLimit(limit)
-                                WorkbenchThemeState.tap(uiView)
+                SectionBar("RESULTS", "الحد المستهدف للنتائج النهائية", searchResultLimit.toString(), accent)
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            "حرّك المؤشر لاختيار أي عدد",
+                            color = IntelColors.TextFaint,
+                            fontSize = 9.sp
+                        )
+                        Slider(
+                            value = searchResultLimit.toFloat(),
+                            onValueChange = { selected ->
+                                val next = selected.roundToInt().coerceIn(
+                                    ApiProviderSettingsStore.MIN_SEARCH_RESULT_LIMIT,
+                                    ApiProviderSettingsStore.MAX_SEARCH_RESULT_LIMIT
+                                )
+                                if (next != searchResultLimit) {
+                                    searchResultLimit = next
+                                    searchResultLimitInput = next.toString()
+                                }
                             },
-                            modifier = Modifier.weight(1f),
-                            accent = accent
+                            onValueChangeFinished = {
+                                apiProviderSettings.setSearchResultLimit(searchResultLimit)
+                            },
+                            valueRange = ApiProviderSettingsStore.MIN_SEARCH_RESULT_LIMIT.toFloat()..
+                                ApiProviderSettingsStore.MAX_SEARCH_RESULT_LIMIT.toFloat()
                         )
                     }
+                    IntelField(
+                        value = searchResultLimitInput,
+                        onValueChange = { rawValue ->
+                            val digits = normalizeSearchLimitDigits(rawValue)
+                            searchResultLimitInput = digits
+                            val enteredValue = digits.toIntOrNull()
+                            if (enteredValue != null &&
+                                enteredValue in ApiProviderSettingsStore.MIN_SEARCH_RESULT_LIMIT..
+                                    ApiProviderSettingsStore.MAX_SEARCH_RESULT_LIMIT
+                            ) {
+                                saveSearchResultLimit(enteredValue)
+                            }
+                        },
+                        label = "قيمة مخصصة",
+                        modifier = Modifier.weight(0.42f).onFocusChanged { focus ->
+                            if (!focus.isFocused) {
+                                searchResultLimitInput = searchResultLimit.toString()
+                            }
+                        },
+                        placeholder = "10–500",
+                        mono = true,
+                        keyboardType = KeyboardType.Number
+                    )
                 }
+                val invalidLimitInput = searchResultLimitInput.isNotBlank() &&
+                    searchResultLimitInput.toIntOrNull()?.let {
+                        it in ApiProviderSettingsStore.MIN_SEARCH_RESULT_LIMIT..
+                            ApiProviderSettingsStore.MAX_SEARCH_RESULT_LIMIT
+                    } != true
+                Text(
+                    if (invalidLimitInput) {
+                        "أدخل عدداً صحيحاً بين 10 و500. القيمة غير الصالحة لن تُحفظ."
+                    } else {
+                        "يمكنك كتابة أي عدد صحيح من 10 إلى 500 أو ضبطه بالشريط. يُحفظ الاختيار تلقائياً ويُطبق على المعرّفات والأخبار."
+                    },
+                    color = if (invalidLimitInput) IntelColors.Amber else IntelColors.TextFaint,
+                    fontSize = 9.sp,
+                    lineHeight = 14.sp
+                )
                 Text(
                     "هذا سقف النتائج المدمجة التي يطلب التطبيق عرضها وحفظها، وليس عدّاداً حرفياً لكل اتصال HTTP. قد تعيد بعض الفهارس أو الخطط المجانية عدداً أقل. تحكم عدد مزودي API وعدد صفحات SerpApi أدناه بشكل مستقل.",
                     color = IntelColors.TextFaint,
@@ -1217,3 +1282,11 @@ private fun showDateTimePicker(
         datePicker.maxDate = System.currentTimeMillis()
     }.show()
 }
+
+
+private fun normalizeSearchLimitDigits(value: String): String = buildString {
+    value.forEach { character ->
+        val digit = Character.digit(character, 10)
+        if (digit in 0..9) append(('0'.code + digit).toChar())
+    }
+}.take(3)

@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -37,6 +38,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
@@ -282,6 +284,7 @@ fun IntelField(
     singleLine: Boolean = true,
     minLines: Int = 1,
     mono: Boolean = true,
+    keyboardType: KeyboardType = KeyboardType.Text,
     trailing: (@Composable RowScope.() -> Unit)? = null
 ) {
     Row(verticalAlignment = Alignment.CenterVertically, modifier = modifier.fillMaxWidth()) {
@@ -291,6 +294,7 @@ fun IntelField(
             modifier = Modifier.weight(1f),
             singleLine = singleLine,
             minLines = minLines,
+            keyboardOptions = KeyboardOptions(keyboardType = keyboardType),
             shape = RoundedCornerShape(3.dp),
             textStyle = androidx.compose.ui.text.TextStyle(
                 fontFamily = if (mono) FontFamily.Monospace else FontFamily.Default,

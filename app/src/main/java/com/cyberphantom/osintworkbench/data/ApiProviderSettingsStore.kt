@@ -134,7 +134,7 @@ class ApiProviderSettingsStore(context: Context) {
     }
 
     private fun normalizeSearchResultLimit(value: Int): Int =
-        listOf(10, 50, 100, 200, 500).minBy { kotlin.math.abs(it - value) }
+        value.coerceIn(MIN_SEARCH_RESULT_LIMIT, MAX_SEARCH_RESULT_LIMIT)
 
     private fun encrypt(value: String): String {
         val cipher = Cipher.getInstance(TRANSFORMATION)
@@ -188,6 +188,8 @@ class ApiProviderSettingsStore(context: Context) {
         const val KEY_SLOTS = 3
         const val DEFAULT_SEARCH_REQUEST_LIMIT = 5
         const val DEFAULT_SEARCH_RESULT_LIMIT = 100
+        const val MIN_SEARCH_RESULT_LIMIT = 10
+        const val MAX_SEARCH_RESULT_LIMIT = 500
         private const val DEFAULT_EXTERNAL_PAGE_LIMIT = 2
         private const val KEY_EXTERNAL_PROVIDER_LIMIT = "external_provider_limit"
         private const val KEY_EXTERNAL_PAGE_LIMIT = "external_page_limit"
