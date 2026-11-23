@@ -73,7 +73,7 @@ class ExternalApiSearchClient(private val settings: ApiProviderSettingsStore) {
             return ExternalSearchOutcome(warnings = warnings)
         }
 
-        val resultLimit = maxResults.coerceIn(10, 100)
+        val resultLimit = maxResults.coerceIn(10, 500)
         val pages = pageLimit.coerceIn(1, 5)
         onProgress("تجميع نتائج " + selected.size + " محركات خارجية؛ حتى " + pages + " صفحات للمحركات الداعمة…")
         val calls = coroutineScope {

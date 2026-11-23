@@ -387,8 +387,19 @@ fun ResearchScreen(
                             message = "جرّب كلمات أوسع أو بالإنجليزية؛ بعض المصادر تحدّ الطلبات المتكررة."
                         )
                     } else {
+                        var visibleNewsCount by remember(result) { mutableStateOf(30) }
                         SectionBar("01", "التغطية", "${result.articles.size} مقالة")
-                        result.articles.forEach { article -> NewsRow(article) { runCatching { uriHandler.openUri(article.url) } } }
+                        result.articles.take(visibleNewsCount).forEach { article ->
+                            NewsRow(article) { runCatching { uriHandler.openUri(article.url) } }
+                        }
+                        if (visibleNewsCount < result.articles.size) {
+                            GhostButton(
+                                text = "عرض 30 مقالة أخرى",
+                                onClick = { visibleNewsCount = minOf(visibleNewsCount + 30, result.articles.size) },
+                                accent = IntelColors.Blue,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
                     }
                 }
             }
@@ -460,7 +471,7 @@ fun ResearchScreen(
                                     val result = engine.search(
                                         rawQuery = query.trim(),
                                         kind = kind,
-                                        maxResults = 200,
+                                        maxResults = 500,
                                         includeImages = includeImages,
                                         includeVideos = includeVideos,
                                         pageLimit = externalPageLimit,
@@ -657,19 +668,37 @@ fun ResearchScreen(
                             message = "قد تكون القيمة نادرة أو أن المصادر تحدّ الطلبات. جرّب صياغة أخرى أو نوع معرّف مختلف."
                         )
                     } else {
+                        var visibleResultCount by remember(result) { mutableStateOf(50) }
                         SectionBar("05", "النتائج", "${result.results.size}")
-                        result.results.forEach { item ->
+                        result.results.take(visibleResultCount).forEach { item ->
                             ResultRow(item) { runCatching { uriHandler.openUri(item.url) } }
+                        }
+                        if (visibleResultCount < result.results.size) {
+                            GhostButton(
+                                text = "عرض 50 نتيجة أخرى",
+                                onClick = { visibleResultCount = minOf(visibleResultCount + 50, result.results.size) },
+                                accent = IntelColors.Violet,
+                                modifier = Modifier.fillMaxWidth()
+                            )
                         }
                     }
                     if (result.mediaResults.isNotEmpty()) {
+                        var visibleMediaCount by remember(result) { mutableStateOf(30) }
                         SectionBar("MEDIA", "الصور والفيديوهات المفهرسة", result.mediaResults.size.toString())
                         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                             Pill("IMAGES " + result.mediaResults.count { it.mediaType == "IMAGE" }, IntelColors.Blue)
                             Pill("VIDEOS " + result.mediaResults.count { it.mediaType == "VIDEO" }, IntelColors.Violet)
                         }
-                        result.mediaResults.forEach { media ->
+                        result.mediaResults.take(visibleMediaCount).forEach { media ->
                             SearchMediaRow(media) { runCatching { uriHandler.openUri(media.pageUrl) } }
+                        }
+                        if (visibleMediaCount < result.mediaResults.size) {
+                            GhostButton(
+                                text = "عرض 30 وسيطاً آخر",
+                                onClick = { visibleMediaCount = minOf(visibleMediaCount + 30, result.mediaResults.size) },
+                                accent = IntelColors.Violet,
+                                modifier = Modifier.fillMaxWidth()
+                            )
                         }
                     }
                 }
@@ -988,7 +1017,7 @@ private suspend fun persistIdentifierSearch(
 ) = withContext(Dispatchers.IO) {
     val started = System.currentTimeMillis()
     val root = store.upsertEntity(query, "IDENTIFIER_${kind.name}", "User supplied", 90)
-    report.results.take(200).forEach { item ->
+    report.results.take(500).forEach { item ->
         val node = store.upsertEntity(item.url, "PUBLIC_WEB_RESULT@$query", item.provider, item.confidence)
         store.addEdge(root, node, "LISTED_IN_PUBLIC_WEB_INDEX", item.provider, item.confidence)
     }

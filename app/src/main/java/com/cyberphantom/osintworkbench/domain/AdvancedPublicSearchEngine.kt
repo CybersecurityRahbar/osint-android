@@ -183,7 +183,7 @@ class AdvancedPublicSearchEngine(private val appContext: Context? = null) {
             addAll(targetedDorks.drop(2).take(1))
             add(redditQuery)
         }.distinct().take(5)
-        val limit = maxResults.coerceIn(10, 200)
+        val limit = maxResults.coerceIn(10, 500)
         onProgress("توسيع العبارة إلى ${queries.size} مسارات بحث متخصصة…")
 
         val (broadOutcome, enrichment) = coroutineScope {
