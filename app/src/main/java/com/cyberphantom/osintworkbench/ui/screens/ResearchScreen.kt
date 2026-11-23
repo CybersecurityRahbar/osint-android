@@ -60,6 +60,8 @@ import com.cyberphantom.osintworkbench.domain.MultiSourceNewsEngine
 import com.cyberphantom.osintworkbench.domain.NewsArticle
 import com.cyberphantom.osintworkbench.domain.NewsSearchResult
 import com.cyberphantom.osintworkbench.domain.PublicProfileResult
+import com.cyberphantom.osintworkbench.domain.SearchMediaResult
+import com.cyberphantom.osintworkbench.domain.PublicPageContentFetcher
 import com.cyberphantom.osintworkbench.domain.PublicResearchEngine
 import com.cyberphantom.osintworkbench.domain.UsernameEnumerationEngine
 import com.cyberphantom.osintworkbench.domain.UsernameHit
@@ -113,10 +115,12 @@ fun ResearchScreen(
     val apiProviderSettings = remember(context) { ApiProviderSettingsStore(context) }
 
     var externalProviderLimit by rememberSaveable { mutableStateOf(apiProviderSettings.externalProviderLimit()) }
+    var externalPageLimit by rememberSaveable { mutableStateOf(apiProviderSettings.externalPageLimit()) }
     var mode by rememberSaveable { mutableStateOf(if (startInNews) ResearchMode.NEWS else ResearchMode.IDENTIFIERS) }
     var query by rememberSaveable { mutableStateOf(initialQuery) }
     var kind by rememberSaveable { mutableStateOf(IdentifierKind.NAME) }
     var includeImages by rememberSaveable { mutableStateOf(true) }
+    var includeVideos by rememberSaveable { mutableStateOf(true) }
     var runUsernameScan by rememberSaveable { mutableStateOf(true) }
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -209,6 +213,25 @@ fun ResearchScreen(
                     },
                     valueRange = 1f..5f,
                     steps = 3
+                )
+                SectionBar("PAGES", "عدد الصفحات لكل محرك يدعم الترقيم", externalPageLimit.toString() + " / 5", accent)
+                Slider(
+                    value = externalPageLimit.toFloat(),
+                    onValueChange = { selected ->
+                        val next = selected.roundToInt().coerceIn(1, 5)
+                        if (next != externalPageLimit) {
+                            externalPageLimit = next
+                            apiProviderSettings.setExternalPageLimit(next)
+                        }
+                    },
+                    valueRange = 1f..5f,
+                    steps = 3
+                )
+                Text(
+                    "SerpApi يحتسب كل طلب بحث غير مخزّن كرصيد مستقل: صفحتان للويب + الصور + YouTube + فيديوهات الويب قد تصل إلى 5 طلبات. إيقاف الوسائط أو تقليل الصفحات يقلل الاستهلاك. بقية المزودين تستخدم أكبر عدد نتائج تسمح به واجهاتهم في الطلب الواحد.",
+                    color = IntelColors.Amber,
+                    fontSize = 9.sp,
+                    lineHeight = 14.sp
                 )
             }
         }
@@ -383,8 +406,15 @@ fun ResearchScreen(
                     ToggleRow(
                         checked = includeImages,
                         onCheckedChange = { includeImages = it },
-                        title = "تضمين صور المعاينة",
-                        detail = "يبطئ الجمع قليلاً لكنه يفيد التحقق البصري من الحسابات والمواقع.",
+                        title = "جمع الصور ومعاينتها",
+                        detail = "يستخدم فهرس الصور الخاص بالمزود عند دعمه؛ قد يستهلك طلباً إضافياً في SerpApi.",
+                        accent = IntelColors.Violet
+                    )
+                    ToggleRow(
+                        checked = includeVideos,
+                        onCheckedChange = { includeVideos = it },
+                        title = "جمع الفيديوهات وYouTube",
+                        detail = "يجلب العنوان والصورة المصغرة والرابط فقط، ولا ينزّل ملف الفيديو.",
                         accent = IntelColors.Violet
                     )
                     NoteBlock(
@@ -421,8 +451,10 @@ fun ResearchScreen(
                                     val result = engine.search(
                                         rawQuery = query.trim(),
                                         kind = kind,
-                                        maxResults = 60,
+                                        maxResults = 80,
                                         includeImages = includeImages,
+                                        includeVideos = includeVideos,
+                                        pageLimit = externalPageLimit,
                                         onProgress = { message -> scope.launch {
                                             progressMessage = message
                                             progressFraction = progressFor(message)
@@ -621,6 +653,16 @@ fun ResearchScreen(
                             ResultRow(item) { runCatching { uriHandler.openUri(item.url) } }
                         }
                     }
+                    if (result.mediaResults.isNotEmpty()) {
+                        SectionBar("MEDIA", "الصور والفيديوهات المفهرسة", result.mediaResults.size.toString())
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Pill("IMAGES " + result.mediaResults.count { it.mediaType == "IMAGE" }, IntelColors.Blue)
+                            Pill("VIDEOS " + result.mediaResults.count { it.mediaType == "VIDEO" }, IntelColors.Violet)
+                        }
+                        result.mediaResults.forEach { media ->
+                            SearchMediaRow(media) { runCatching { uriHandler.openUri(media.pageUrl) } }
+                        }
+                    }
                 }
             }
         }
@@ -630,16 +672,28 @@ fun ResearchScreen(
 
 @Composable
 private fun ResultRow(result: PublicProfileResult, onOpen: () -> Unit) {
+    var expanded by remember(result.url) { mutableStateOf(false) }
+    var fullText by remember(result.url) { mutableStateOf(result.fullText) }
+    var loading by remember(result.url) { mutableStateOf(false) }
+    LaunchedEffect(expanded) {
+        if (expanded && fullText.isBlank() && !loading) {
+            loading = true
+            fullText = runCatching { PublicPageContentFetcher().fetch(result.url) }.getOrDefault("")
+            loading = false
+        }
+    }
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .background(IntelColors.Panel, RoundedCornerShape(2.dp))
-            .clickable(onClick = onOpen)
+            .clickable { expanded = !expanded }
             .padding(10.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             Pill(result.provider, IntelColors.Signal)
+            if (result.matchType == "EXACT_PROFILE") Pill("تطابق دقيق", IntelColors.Green)
+            if (result.matchType == "RELATED_MENTION") Pill("ذكر مرتبط", IntelColors.Amber)
             Spacer(Modifier.weight(1f))
             ConfidenceMeter(result.confidence)
         }
@@ -655,27 +709,54 @@ private fun ResultRow(result: PublicProfileResult, onOpen: () -> Unit) {
                 contentScale = androidx.compose.ui.layout.ContentScale.Crop
             )
         }
+        if (expanded) {
+            Hairline()
+            MicroLabel("FULL PAGE TEXT · " + fullText.length + " CHARACTERS", IntelColors.Signal)
+            when {
+                loading -> Text("يتم استخراج النص العام من الصفحة…", color = IntelColors.TextFaint, fontSize = 9.sp)
+                fullText.isNotBlank() -> Text(fullText, color = IntelColors.TextDim, fontSize = 10.sp, lineHeight = 16.sp)
+                else -> NoteBlock("لم يتمكن الموقع من إتاحة النص العام. قد يعتمد على JavaScript أو تسجيل الدخول أو اشتراك أو يمنع الطلبات؛ لم يتم تجاوز أي حماية.", IntelColors.Amber, "TEXT UNAVAILABLE")
+            }
+        }
         Hairline()
         Row(verticalAlignment = Alignment.CenterVertically) {
             DataText(result.url, IntelColors.TextFaint, size = 8, maxLines = 1, modifier = Modifier.weight(1f))
-            Icon(Icons.Filled.OpenInNew, contentDescription = "فتح", tint = IntelColors.Signal, modifier = Modifier.size(12.dp))
+            MicroLabel(if (expanded) "إخفاء النص" else "عرض النص الكامل", IntelColors.Signal)
         }
+        GhostButton("فتح الصفحة الأصلية", onOpen, accent = IntelColors.Blue, modifier = Modifier.fillMaxWidth())
     }
 }
 
 @Composable
 private fun NewsRow(article: NewsArticle, onOpen: () -> Unit) {
-    IntelPanel(
-        modifier = Modifier.clickable(onClick = onOpen),
-        accent = IntelColors.Blue,
-        contentPadding = 10
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+    var expanded by remember(article.url) { mutableStateOf(false) }
+    var fullText by remember(article.url) { mutableStateOf(article.fullText) }
+    var loading by remember(article.url) { mutableStateOf(false) }
+    LaunchedEffect(expanded) {
+        if (expanded && fullText.isBlank() && !loading) {
+            loading = true
+            fullText = runCatching { PublicPageContentFetcher().fetch(article.url) }.getOrDefault("")
+            loading = false
+        }
+    }
+    IntelPanel(accent = IntelColors.Blue, contentPadding = 10) {
+        Row(
+            modifier = Modifier.fillMaxWidth().clickable { expanded = !expanded },
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
             Pill(article.publisherName.ifBlank { article.domain }, IntelColors.Blue)
             Spacer(Modifier.weight(1f))
             MicroLabel(formatPublishedDate(article.publishedAt), IntelColors.TextFaint)
         }
-        Text(article.title, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = IntelColors.Text, lineHeight = 17.sp)
+        Text(
+            article.title,
+            modifier = Modifier.fillMaxWidth().clickable { expanded = !expanded },
+            fontSize = 12.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = IntelColors.Text,
+            lineHeight = 17.sp
+        )
         if (article.description.isNotBlank()) {
             Text(
                 article.description,
@@ -683,7 +764,8 @@ private fun NewsRow(article: NewsArticle, onOpen: () -> Unit) {
                 fontSize = 9.sp,
                 lineHeight = 14.sp,
                 maxLines = 4,
-                overflow = TextOverflow.Ellipsis
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.clickable { expanded = !expanded }
             )
         }
         if (!article.imageUrl.isNullOrBlank()) {
@@ -694,10 +776,61 @@ private fun NewsRow(article: NewsArticle, onOpen: () -> Unit) {
                 contentScale = androidx.compose.ui.layout.ContentScale.Crop
             )
         }
+        if (expanded) {
+            Hairline()
+            MicroLabel("FULL ARTICLE TEXT · " + fullText.length + " CHARACTERS", IntelColors.Blue)
+            when {
+                loading -> Text("يتم استخراج النص العام للمقال…", color = IntelColors.TextFaint, fontSize = 9.sp)
+                fullText.isNotBlank() -> Text(fullText, color = IntelColors.TextDim, fontSize = 10.sp, lineHeight = 16.sp)
+                else -> NoteBlock("لم يتوفر النص الكامل من واجهة المصدر أو الصفحة العامة. قد يكون المحتوى محمياً أو محجوباً؛ افتح المقال الأصلي لقراءته.", IntelColors.Amber, "TEXT UNAVAILABLE")
+            }
+        }
         Row(verticalAlignment = Alignment.CenterVertically) {
-            MicroLabel("${article.provider} · ${article.language.ifBlank { "—" }}", IntelColors.TextFaint, Modifier.weight(1f))
+            MicroLabel(article.provider + " · " + article.language.ifBlank { "—" }, IntelColors.TextFaint, Modifier.weight(1f))
             DataText(article.domain, IntelColors.TextFaint, size = 8, maxLines = 1)
         }
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            GhostButton(
+                text = if (expanded) "إخفاء النص" else "عرض النص الكامل",
+                onClick = { expanded = !expanded },
+                accent = IntelColors.Blue,
+                modifier = Modifier.weight(1f)
+            )
+            GhostButton(
+                text = "فتح المقال",
+                onClick = onOpen,
+                accent = IntelColors.Signal,
+                modifier = Modifier.weight(1f)
+            )
+        }
+    }
+}
+
+@Composable
+private fun SearchMediaRow(media: SearchMediaResult, onOpen: () -> Unit) {
+    IntelPanel(accent = if (media.mediaType == "VIDEO") IntelColors.Violet else IntelColors.Blue, contentPadding = 10) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            Pill(if (media.mediaType == "VIDEO") "VIDEO" else "IMAGE", if (media.mediaType == "VIDEO") IntelColors.Violet else IntelColors.Blue)
+            Pill(media.provider, IntelColors.TextDim)
+        }
+        if (!media.thumbnailUrl.isNullOrBlank()) {
+            AsyncImage(
+                model = media.thumbnailUrl,
+                contentDescription = media.title,
+                modifier = Modifier.fillMaxWidth().heightIn(max = 190.dp).background(IntelColors.PanelInset, RoundedCornerShape(2.dp)),
+                contentScale = androidx.compose.ui.layout.ContentScale.Crop
+            )
+        }
+        Text(media.title, color = IntelColors.Text, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, lineHeight = 15.sp)
+        if (media.description.isNotBlank()) {
+            Text(media.description, color = IntelColors.TextFaint, fontSize = 9.sp, lineHeight = 13.sp, maxLines = 3, overflow = TextOverflow.Ellipsis)
+        }
+        GhostButton(
+            text = if (media.mediaType == "VIDEO") "فتح الفيديو للمشاهدة" else "فتح صفحة الصورة",
+            onClick = onOpen,
+            accent = IntelColors.Signal,
+            modifier = Modifier.fillMaxWidth()
+        )
     }
 }
 
@@ -742,6 +875,7 @@ private fun newsJson(result: NewsSearchResult): String {
                 .put("publisher", article.publisherName)
                 .put("provider", article.provider)
                 .put("imageUrl", article.imageUrl)
+                .put("fullText", article.fullText)
         )
     }
     return root.put("articles", items).toString(2)
@@ -767,12 +901,28 @@ private fun identifierJson(
                 .put("provider", item.provider)
                 .put("title", item.title)
                 .put("description", item.description)
+                .put("fullText", item.fullText)
+                .put("matchType", item.matchType)
                 .put("url", item.url)
                 .put("confidence", item.confidence)
                 .put("imageUrl", item.imageUrl)
         )
     }
     root.put("results", results)
+    val media = JSONArray()
+    report.mediaResults.forEach { item ->
+        media.put(
+            JSONObject()
+                .put("provider", item.provider)
+                .put("mediaType", item.mediaType)
+                .put("title", item.title)
+                .put("pageUrl", item.pageUrl)
+                .put("thumbnailUrl", item.thumbnailUrl)
+                .put("description", item.description)
+                .put("mediaId", item.mediaId)
+        )
+    }
+    root.put("mediaResults", media)
     if (hits.isNotEmpty()) {
         root.put(
             "usernameHits",
