@@ -293,8 +293,14 @@ class ExternalApiSearchClient(private val settings: ApiProviderSettingsStore) {
             ApiProviderId.FIRECRAWL -> JSONArray().apply {
                 val web = data?.optJSONArray("web") ?: JSONArray()
                 val news = data?.optJSONArray("news") ?: JSONArray()
-                for (i in 0 until web.length()) put(web.optJSONObject(i) ?: continue)
-                for (i in 0 until news.length()) put(news.optJSONObject(i) ?: continue)
+                for (i in 0 until web.length()) {
+                    val item = web.optJSONObject(i)
+                    if (item != null) put(item)
+                }
+                for (i in 0 until news.length()) {
+                    val item = news.optJSONObject(i)
+                    if (item != null) put(item)
+                }
             }
             ApiProviderId.EXA -> root.optJSONArray("results") ?: JSONArray()
             else -> JSONArray()
@@ -467,7 +473,7 @@ class ExternalApiSearchClient(private val settings: ApiProviderSettingsStore) {
         is JSONObject -> value.optString("static").ifBlank { value.optString("url") }.ifBlank { value.optString("link") }
         is JSONArray -> {
             val first = value.optJSONObject(0)
-            first?.optString("url")?.ifBlank { first.optString("static") }
+            first?.let { it.optString("url").ifBlank { it.optString("static") } }
         }
         else -> null
     }?.takeIf(String::isNotBlank)
