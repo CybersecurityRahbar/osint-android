@@ -25,8 +25,8 @@ import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.Newspaper
 import androidx.compose.material.icons.filled.OpenInNew
-import androidx.compose.material.icons.filled.PersonSearch
-import androidx.compose.material.icons.filled.TravelExplore
+import androidx.compose.material.icons.filled.Fingerprint
+import androidx.compose.material.icons.filled.ManageSearch
 import androidx.compose.material.icons.filled.WarningAmber
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Slider
@@ -43,6 +43,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -81,6 +82,7 @@ import com.cyberphantom.osintworkbench.ui.design.Pill
 import com.cyberphantom.osintworkbench.ui.design.SectionBar
 import com.cyberphantom.osintworkbench.ui.design.StatTile
 import com.cyberphantom.osintworkbench.ui.design.ToggleRow
+import com.cyberphantom.osintworkbench.ui.design.WorkbenchThemeState
 import com.cyberphantom.osintworkbench.ui.util.safeFileName
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -111,11 +113,13 @@ fun ResearchScreen(
 ) {
     val context = LocalContext.current
     val uriHandler = LocalUriHandler.current
+    val uiView = LocalView.current
     val scope = rememberCoroutineScope()
     val apiProviderSettings = remember(context) { ApiProviderSettingsStore(context) }
 
     var externalProviderLimit by rememberSaveable { mutableStateOf(apiProviderSettings.externalProviderLimit()) }
     var externalPageLimit by rememberSaveable { mutableStateOf(apiProviderSettings.externalPageLimit()) }
+    var searchResultLimit by rememberSaveable { mutableStateOf(apiProviderSettings.searchResultLimit()) }
     var mode by rememberSaveable { mutableStateOf(if (startInNews) ResearchMode.NEWS else ResearchMode.IDENTIFIERS) }
     var query by rememberSaveable { mutableStateOf(initialQuery) }
     var kind by rememberSaveable { mutableStateOf(IdentifierKind.NAME) }
@@ -176,7 +180,7 @@ fun ResearchScreen(
             code = "MODULE 03 / INTEL",
             title = "البحث الاستخباراتي",
             subtitle = "فهارس عامة متعددة، تحليل تجميعي، أخبار مؤرشفة، ومصادر خاصة",
-            icon = Icons.Filled.TravelExplore,
+            icon = Icons.Filled.ManageSearch,
             accent = IntelColors.Violet
         )
 
@@ -195,6 +199,28 @@ fun ResearchScreen(
         if (mode != ResearchMode.PRIVATE_SOURCES) {
             val accent = if (mode == ResearchMode.NEWS) IntelColors.Blue else IntelColors.Violet
             IntelPanel(accent = accent) {
+                SectionBar("RESULTS", "عدد النتائج المستهدفة في البحث", searchResultLimit.toString(), accent)
+                Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                    listOf(10, 50, 100, 200, 500).forEach { limit ->
+                        ModeChip(
+                            selected = searchResultLimit == limit,
+                            label = limit.toString(),
+                            onClick = {
+                                searchResultLimit = limit
+                                apiProviderSettings.setSearchResultLimit(limit)
+                                WorkbenchThemeState.tap(uiView)
+                            },
+                            modifier = Modifier.weight(1f),
+                            accent = accent
+                        )
+                    }
+                }
+                Text(
+                    "هذا سقف النتائج المدمجة التي يطلب التطبيق عرضها وحفظها، وليس عدّاداً حرفياً لكل اتصال HTTP. قد تعيد بعض الفهارس أو الخطط المجانية عدداً أقل. تحكم عدد مزودي API وعدد صفحات SerpApi أدناه بشكل مستقل.",
+                    color = IntelColors.TextFaint,
+                    fontSize = 9.sp,
+                    lineHeight = 14.sp
+                )
                 SectionBar("API", "عدد المصادر الخارجية لكل عملية", externalProviderLimit.toString() + " / 5", accent)
                 Text(
                     "هذا الحد يضبط عدد مزودي API الخارجيين لكل عملية: حتى 5 في البحث الشامل وحتى 4 في الأخبار. لا يُستدعى إلا المصدر المفعّل الذي لديه مفتاح محفوظ. قد يزيد عدد المحاولات عند الانتقال تلقائياً إلى مفتاح بديل.",
@@ -310,6 +336,7 @@ fun ResearchScreen(
                     ActionButton(
                         text = "جمع الأخبار",
                         onClick = {
+                            WorkbenchThemeState.tap(uiView)
                             scope.launch {
                                 busy = true
                                 operationStartedAt = SystemClock.elapsedRealtime()
@@ -322,7 +349,7 @@ fun ResearchScreen(
                                 try {
                                     val result = MultiSourceNewsEngine(context).search(
                                         query = query.trim(),
-                                        maxRecords = 120,
+                                        maxRecords = searchResultLimit,
                                         includeImages = includeImages,
                                         startTimeMillis = if (newsRangeEnabled) newsFromMillis else null,
                                         endTimeMillis = if (newsRangeEnabled) newsToMillis else null,
@@ -337,9 +364,11 @@ fun ResearchScreen(
                                     runCatching { persistNews(store, result) }
                                         .onFailure { error = "تعذر حفظ النتائج: ${it.message}" }
                                     onSaved()
+                                    WorkbenchThemeState.searchFinished(context, uiView, success = true)
                                 } catch (cancelled: CancellationException) {
                                     throw cancelled
                                 } catch (exception: Exception) {
+                                    WorkbenchThemeState.searchFinished(context, uiView, success = false)
                                     error = exception.message ?: "تعذر جلب الأخبار."
                                     progressMessage = "توقف البحث بسبب خطأ."
                                 } finally {
@@ -454,6 +483,7 @@ fun ResearchScreen(
                     ActionButton(
                         text = "تشغيل البحث",
                         onClick = {
+                            WorkbenchThemeState.tap(uiView)
                             scope.launch {
                                 busy = true
                                 operationStartedAt = SystemClock.elapsedRealtime()
@@ -471,7 +501,7 @@ fun ResearchScreen(
                                     val result = engine.search(
                                         rawQuery = query.trim(),
                                         kind = kind,
-                                        maxResults = 500,
+                                        maxResults = searchResultLimit,
                                         includeImages = includeImages,
                                         includeVideos = includeVideos,
                                         pageLimit = externalPageLimit,
@@ -496,9 +526,11 @@ fun ResearchScreen(
                                     progressMessage = "اكتمل التحليل ودمج النتائج."
                                     progressFraction = 1f
                                     onSaved()
+                                    WorkbenchThemeState.searchFinished(context, uiView, success = true)
                                 } catch (cancelled: CancellationException) {
                                     throw cancelled
                                 } catch (exception: Exception) {
+                                    WorkbenchThemeState.searchFinished(context, uiView, success = false)
                                     error = exception.message ?: "تعذر إكمال البحث."
                                     progressMessage = "توقف البحث بسبب خطأ."
                                 } finally {
@@ -508,7 +540,7 @@ fun ResearchScreen(
                             }
                         },
                         modifier = Modifier.fillMaxWidth(),
-                        icon = Icons.Filled.PersonSearch,
+                        icon = Icons.Filled.Fingerprint,
                         loading = busy,
                         enabled = query.isNotBlank(),
                         accent = IntelColors.Violet
@@ -1049,7 +1081,7 @@ private suspend fun persistIdentifierSearch(
 
 private suspend fun persistNews(store: LocalStore, result: NewsSearchResult) = withContext(Dispatchers.IO) {
     val root = store.upsertEntity(result.query, "NEWS_QUERY", "Multi-source news", 70)
-    result.articles.take(200).forEach { article ->
+    result.articles.take(500).forEach { article ->
         val node = store.upsertEntity(article.url, "NEWS_ARTICLE@${result.query}", article.provider, 60)
         store.addEdge(root, node, "REPORTED_BY", article.provider, 60)
     }
