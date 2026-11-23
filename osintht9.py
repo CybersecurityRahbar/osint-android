@@ -38,7 +38,7 @@ import base64
 import traceback
 
 # ===================== SerpAPI Integration =====================
-SERPAPI_KEY = "4bea13df4d94a832d287d070e7e57d75953413eeec12ef85560f59273090fc12"
+SERPAPI_KEY = ""
 SERPAPI_AVAILABLE = False
 
 user_site_packages = os.path.expanduser('~/.local/lib/python3.13/site-packages')
@@ -104,8 +104,8 @@ LOG_FILE = "alkaser.log"
 logging.basicConfig(filename=LOG_FILE, level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 # Telegram settings
-BOT_TOKEN = "8244019772:AAHT7uLh1yHEKlKJsDUps4SNPRpkjSG_msw"
-CHAT_ID   = "8266435771"
+BOT_TOKEN = ""
+CHAT_ID   = ""
 
 PROXIES_FILE = "proxies.txt"
 REQUEST_DELAY = 0.5
