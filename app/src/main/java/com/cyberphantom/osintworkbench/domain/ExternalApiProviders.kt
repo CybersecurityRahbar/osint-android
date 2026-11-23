@@ -137,8 +137,8 @@ class ExternalApiSearchClient(private val settings: ApiProviderSettingsStore) {
                                 linkedMapOf(
                                     "engine" to "google",
                                     "q" to query,
-                                    "num" to "10",
-                                    "start" to (page * 10).toString(),
+                                    "num" to "100",
+                                    "start" to (page * 100).toString(),
                                     "api_key" to key
                                 )
                             )
