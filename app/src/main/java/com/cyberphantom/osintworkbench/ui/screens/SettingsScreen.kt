@@ -35,7 +35,7 @@ import com.cyberphantom.osintworkbench.ui.design.StatTile
 import com.cyberphantom.osintworkbench.ui.telegram.PrivateSourcesSettings
 
 private enum class SettingsPage {
-    HOME, API_KEYS, PRIVATE_SOURCES, DATA, ABOUT
+    HOME, API_KEYS, PRIVATE_SOURCES, DATA, THEMES, ABOUT
 }
 
 @Composable
@@ -80,6 +80,13 @@ fun SettingsScreen(stats: StoreStats, store: LocalStore, dataVersion: Int, onDat
                     onClick = { page = SettingsPage.DATA }
                 )
                 SettingsNavigationCard(
+                    title = "الثيمات والمؤثرات",
+                    detail = "اختر مظهر النظام، الحركة المتوهجة، أصوات الواجهة وتنبيهات اكتمال البحث.",
+                    meta = "VISUAL THEMES / EFFECTS",
+                    accent = IntelColors.Red,
+                    onClick = { page = SettingsPage.THEMES }
+                )
+                SettingsNavigationCard(
                     title = "حول التطبيق والأمان",
                     detail = "الإصدار، الحزمة، قاعدة البيانات، وملاحظات الخصوصية والأمان.",
                     meta = "ABOUT / SECURITY",
@@ -112,6 +119,10 @@ fun SettingsScreen(stats: StoreStats, store: LocalStore, dataVersion: Int, onDat
                     onDataChanged = onDataChanged,
                     onBack = { page = SettingsPage.HOME }
                 )
+            }
+
+            SettingsPage.THEMES -> {
+                ThemesSettingsScreen(onBack = { page = SettingsPage.HOME })
             }
 
             SettingsPage.ABOUT -> {
