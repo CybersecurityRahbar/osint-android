@@ -108,6 +108,15 @@ class ApiProviderSettingsStore(context: Context) {
             .apply()
     }
 
+    @Synchronized
+    fun externalPageLimit(): Int =
+        preferences.getInt(KEY_EXTERNAL_PAGE_LIMIT, DEFAULT_EXTERNAL_PAGE_LIMIT).coerceIn(1, 5)
+
+    @Synchronized
+    fun setExternalPageLimit(value: Int) {
+        preferences.edit().putInt(KEY_EXTERNAL_PAGE_LIMIT, value.coerceIn(1, 5)).apply()
+    }
+
     private fun encrypt(value: String): String {
         val cipher = Cipher.getInstance(TRANSFORMATION)
         cipher.init(Cipher.ENCRYPT_MODE, getOrCreateSecretKey())
@@ -158,8 +167,10 @@ class ApiProviderSettingsStore(context: Context) {
 
     companion object {
         const val KEY_SLOTS = 3
-        const val DEFAULT_SEARCH_REQUEST_LIMIT = 3
+        const val DEFAULT_SEARCH_REQUEST_LIMIT = 5
+        private const val DEFAULT_EXTERNAL_PAGE_LIMIT = 2
         private const val KEY_EXTERNAL_PROVIDER_LIMIT = "external_provider_limit"
+        private const val KEY_EXTERNAL_PAGE_LIMIT = "external_page_limit"
         private const val KEY_ALIAS = "osint_external_api_aes_v1"
         private const val ANDROID_KEYSTORE = "AndroidKeyStore"
         private const val TRANSFORMATION = "AES/GCM/NoPadding"

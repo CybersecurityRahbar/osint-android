@@ -31,7 +31,19 @@ data class PublicProfileResult(
     val confidence: Int,
     val relevanceScore: Int = 0,
     /** Optional image thumbnail returned by a public image index; never an identity assertion. */
-    val imageUrl: String? = null
+    val imageUrl: String? = null,
+    /** Full public page text, when the provider returns it without requiring a second fetch. */
+    val fullText: String = ""
+)
+
+data class SearchMediaResult(
+    val provider: String,
+    val mediaType: String,
+    val title: String,
+    val pageUrl: String,
+    val thumbnailUrl: String? = null,
+    val description: String = "",
+    val mediaId: String = ""
 )
 
 data class NewsArticle(
@@ -44,7 +56,9 @@ data class NewsArticle(
     val publisherName: String = "",
     val imageUrl: String? = null,
     val provider: String = "GDELT DOC API",
-    val description: String = ""
+    val description: String = "",
+    /** Full provider-supplied article text, when available. */
+    val fullText: String = ""
 )
 
 data class NewsSearchResult(

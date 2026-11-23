@@ -26,7 +26,8 @@ data class PublicWebSearchResponse(
     val results: List<PublicProfileResult>,
     val warnings: List<String>,
     val providersAttempted: Int,
-    val elapsedMs: Long = 0
+    val elapsedMs: Long = 0,
+    val mediaResults: List<SearchMediaResult> = emptyList()
 ) {
     val sourceCount: Int get() = results.map { it.provider }.distinct().size
 }
