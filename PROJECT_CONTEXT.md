@@ -1693,3 +1693,50 @@
 - SerpApi Status and Error Codes — معنى Success وError ووجود نتائج فارغة: https://serpapi.com/api-status-and-error-codes
 - SerpApi Python pagination guide — كل صفحة إضافية تتطلب طلباً آخر: https://serpapi-python.readthedocs.io/en/stable/user_guide/pagination.html
 - تمت مراجعة الشيفرة في `osintht9.py` وموصل `ExternalApiProviders.kt` ومخزن `ApiProviderSettingsStore.kt` على الفرع `main` عند commit `94b092a483565bf8e69909a7f123e1a929ff11b8`.
+
+
+## 2026-11-23 — طلب حد صارم لطلبات SerpApi ودراسة الصور وERNIE 5.5
+
+### طلب المستخدم
+- طلب المستخدم إضافة إعداد مستقل يحدد عدد طلبات SerpApi المسموح بها في عملية البحث الواحدة، بعد توضيح أن نتائج الويب والصور والفيديو تأتي من أنواع/فهارس بحث منفصلة.
+- سأل عن إضافة بحث عكسي بصورة من معرض الهاتف، وعن فائدة نموذج ERNIE 5.5 Flash Preview المجاني من خلال OpenRouter.
+- توضيح: Search Index يحدد corpus عبر type=web أو type=video، وGoogle Images محرك منفصل. يمكن لبعض نتائج الويب أن تحمل رابط صورة مصغرة، لكن هذا ليس بديلاً عن نتائج Google Images أو الفيديو المستقل.
+
+### تصميم حد طلبات SerpApi
+- إعداد جديد مستقل serpApiRequestLimit: الافتراضي المقترح 4، والحد الأدنى 1، والحد الأعلى 10، ويُحفظ في SharedPreferences باسم serpapi_request_limit.
+- يجب أن يظهر حقل رقمي وشريط تحكم متزامنان في بحث المعرّفات، لا في الأخبار أو المصادر الخاصة.
+- الحد يجب أن يُطبق في طبقة النقل قبل بدء كل اتصال SerpApi، ويشمل صفحات web وGoogle Light fallback وGoogle Images وSearch Index video وYouTube وGoogle Videos fallback. يجب مشاركة العداد نفسه بين محاولات المفاتيح البديلة.
+- المحاولة الفاشلة تستهلك خانة في الحد المحلي لتجنب تجاوز سقف الاتصالات، لكنها ليست بالضرورة اعتماداً مدفوعاً في SerpApi. لذلك يجب أن يعرض التطبيق عدد محاولات الإرسال لا أن يزعم أنه يحدد الفاتورة.
+- الأولوية المقترحة: صفحة web الأساسية أولاً، ثم الصور والفيديو، ثم صفحات web الإضافية أو محركات الفيديو البديلة إذا بقيت ميزانية.
+- يظل searchResultLimit (10–500) للنتائج النهائية، وexternalPageLimit (1–5) لترقيم صفحات الويب، وexternalProviderLimit لاختيار مزودي API، كل منها إعداداً مستقلاً.
+
+### دراسة البحث العكسي بالصور
+- الميزة ممكنة باستخدام SerpApi Google Lens:
+  1. اختيار صورة من الهاتف عبر Android Photo Picker أو OpenDocument.
+  2. ضغط الصورة/تصغيرها عند الحاجة إلى JPG أو PNG أو WebP حتى 500 KB.
+  3. رفع الصورة عبر multipart POST إلى SerpApi Image API للحصول على image_id.
+  4. إرسال image_id فوراً إلى Google Lens API قبل انتهاء صلاحيته (10 دقائق).
+  5. عرض visual_matches وexact_matches والصفحات والمصادر والروابط والصور المصغرة.
+- Google Reverse Image API يدعم أيضاً image_url لصورة متاحة على رابط عام، أما الصورة المحلية الخاصة فتناسبها آلية upload ثم Lens.
+- يجب إبلاغ المستخدم أن الصورة سترسل إلى SerpApi/Google Lens قبل التنفيذ؛ البحث ليس معالجة محلية.
+- لا يُفترض أن خطوة الرفع مجانية أو أنها تُحسب مثل بحث Google Lens؛ يجب قياس كل endpoint وتسجيل الاستهلاك عند تنفيذ الميزة. لم تُنفذ ميزة البحث العكسي حتى الآن.
+
+### دراسة OpenRouter / ERNIE 5.5 Flash Preview
+- النموذج المجاني baidu/ernie-5.5-flash-preview:free معروض بسعر صفر للمدخلات والمخرجات، ونافذة سياق 1,024,000 token، ويدعم reasoning وtool calling وstructured outputs.
+- بيانات OpenRouter API الحالية تصنفه text->text ومدخلاته text فقط؛ لذلك لا ينبغي استخدامه لاستقبال الصور مباشرة أو كرؤية حاسوبية.
+- الاستخدامات الممكنة في التطبيق: تلخيص نتائج البحث، إزالة التكرار دلالياً، استخراج الكيانات والتواريخ والمعلومات من النصوص، اقتراح استعلامات تكميلية، شرح العلاقات، وإنتاج تقارير منظمة JSON.
+- لا يصبح النموذج محرك بحث أو وكيلاً متصلاً بالإنترنت من تلقاء نفسه؛ يجب أن يزوده التطبيق بالنتائج والأدوات التي يسمح له باستدعائها. مخرجاته قرائن مساعدة وليست إثباتاً للهوية أو بديلاً عن المصدر.
+- عند الحاجة إلى رؤية الصور يجب اختيار نموذج يعلن في metadata صراحةً أن input_modalities تشمل image. قيود النماذج المجانية تتغير ويجب إعادة التحقق وقت التكامل.
+
+### المراجع الرسمية التي تمت مراجعتها
+- SerpApi Search Index: https://serpapi.com/search-index-api
+- SerpApi Google Images: https://serpapi.com/google-images-api
+- SerpApi Google Videos: https://serpapi.com/google-videos-api
+- SerpApi Image Upload: https://serpapi.com/image-api
+- SerpApi Google Lens: https://serpapi.com/google-lens-api
+- OpenRouter ERNIE 5.5 Flash Preview: https://openrouter.ai/baidu/ernie-5.5-flash-preview:free
+- OpenRouter public model metadata: https://openrouter.ai/api/v1/models
+- OpenRouter Free Model Limits: https://openrouter.ai/collections/free-models/
+
+### الحالة
+- هذه الإضافة توثق متطلبات التصميم والبحث. لا يُعد حد الطلبات مطبقاً في الشيفرة قبل دمج تغييرات الموصل والواجهة والاختبارات وتأكيد نجاح CI.
