@@ -58,12 +58,17 @@ class ApiProviderSettingsStoreAndroidTest {
             assertEquals(5, store.externalProviderLimit())
             store.setExternalPageLimit(4)
             assertEquals(4, store.externalPageLimit())
+            store.setSearchResultLimit(50)
+            assertEquals(50, store.searchResultLimit())
+            store.setSearchResultLimit(500)
+            assertEquals(500, store.searchResultLimit())
         } finally {
             (1..ApiProviderSettingsStore.KEY_SLOTS).forEach { store.clearKey(provider, it) }
             store.setEnabled(provider, false)
             store.recordSuccessfulKey(provider, 1)
             store.setExternalProviderLimit(ApiProviderSettingsStore.DEFAULT_SEARCH_REQUEST_LIMIT)
             store.setExternalPageLimit(2)
+            store.setSearchResultLimit(ApiProviderSettingsStore.DEFAULT_SEARCH_RESULT_LIMIT)
         }
     }
 }
