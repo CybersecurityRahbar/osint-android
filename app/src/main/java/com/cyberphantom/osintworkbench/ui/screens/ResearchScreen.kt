@@ -684,10 +684,13 @@ private fun ResultRow(result: PublicProfileResult, onOpen: () -> Unit) {
     var expanded by remember(result.url) { mutableStateOf(false) }
     var fullText by remember(result.url) { mutableStateOf(result.fullText) }
     var loading by remember(result.url) { mutableStateOf(false) }
+    var fetchAttempted by remember(result.url) { mutableStateOf(false) }
     LaunchedEffect(expanded) {
-        if (expanded && fullText.isBlank() && !loading) {
+        if (expanded && !fetchAttempted && fullText.length < 1_500 && !loading) {
+            fetchAttempted = true
             loading = true
-            fullText = runCatching { PublicPageContentFetcher().fetch(result.url) }.getOrDefault("")
+            val fetched = runCatching { PublicPageContentFetcher().fetch(result.url) }.getOrDefault("")
+            if (fetched.length > fullText.length) fullText = fetched
             loading = false
         }
     }
@@ -741,10 +744,13 @@ private fun NewsRow(article: NewsArticle, onOpen: () -> Unit) {
     var expanded by remember(article.url) { mutableStateOf(false) }
     var fullText by remember(article.url) { mutableStateOf(article.fullText) }
     var loading by remember(article.url) { mutableStateOf(false) }
+    var fetchAttempted by remember(article.url) { mutableStateOf(false) }
     LaunchedEffect(expanded) {
-        if (expanded && fullText.isBlank() && !loading) {
+        if (expanded && !fetchAttempted && fullText.length < 1_500 && !loading) {
+            fetchAttempted = true
             loading = true
-            fullText = runCatching { PublicPageContentFetcher().fetch(article.url) }.getOrDefault("")
+            val fetched = runCatching { PublicPageContentFetcher().fetch(article.url) }.getOrDefault("")
+            if (fetched.length > fullText.length) fullText = fetched
             loading = false
         }
     }
