@@ -6,6 +6,7 @@ import androidx.activity.compose.setContent
 import com.cyberphantom.osintworkbench.ui.WorkbenchApp
 import com.cyberphantom.osintworkbench.ui.telegram.PrivateSessionHost
 import com.cyberphantom.osintworkbench.ui.design.WorkbenchTheme
+import com.cyberphantom.osintworkbench.ui.design.WorkbenchThemeState
 
 class MainActivity : ComponentActivity() {
     override fun onResume() {
@@ -25,6 +26,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        WorkbenchThemeState.initialize(this)
         setContent {
             WorkbenchTheme {
                 WorkbenchApp()
