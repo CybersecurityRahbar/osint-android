@@ -26,9 +26,9 @@ internal class BroadPublicSearchAdapter {
     private data class ImageBatch(val results: List<PublicProfileResult>, val warnings: List<String>)
 
     suspend fun search(queries: List<String>, maxResults: Int, includeImages: Boolean): Outcome {
-        val terms = queries.map(String::trim).filter(String::isNotBlank).distinct().take(4)
+        val terms = queries.map(String::trim).filter(String::isNotBlank).distinct().take(5)
         if (terms.isEmpty()) return Outcome(emptyList(), listOf("لا توجد عبارة صالحة للبحث."), 0)
-        val limit = maxResults.coerceIn(10, 80)
+        val limit = maxResults.coerceIn(10, 200)
         val semaphore = Semaphore(4)
         val (attempts, images) = coroutineScope {
             val webTask = async {
@@ -134,7 +134,7 @@ internal class BroadPublicSearchAdapter {
         val hits = buildList {
             for (selector in selectors) {
                 for (anchor in document.select(selector)) {
-                    if (size >= limit.coerceIn(1, 80)) break
+                    if (size >= limit.coerceIn(1, 200)) break
                     val href = anchor.attr("href").trim()
                     val title = anchor.text().trim()
                     if (href.isBlank() || title.length < 3) continue
@@ -149,7 +149,7 @@ internal class BroadPublicSearchAdapter {
                     )?.text().orEmpty()
                     add(Triple(href, title, snippet))
                 }
-                if (size >= limit.coerceIn(1, 80)) break
+                if (size >= limit.coerceIn(1, 200)) break
             }
         }
 
@@ -173,7 +173,7 @@ internal class BroadPublicSearchAdapter {
                 url = url,
                 confidence = if (snippet.isBlank()) 60 else 70
             )
-        }.distinctBy { canonical(it.url) }.take(limit.coerceIn(1, 80))
+        }.distinctBy { canonical(it.url) }.take(limit.coerceIn(1, 200))
     }
 
     private fun parseQwant(root: JSONObject, provider: String, limit: Int): List<PublicProfileResult> {

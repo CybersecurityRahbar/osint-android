@@ -460,7 +460,7 @@ fun ResearchScreen(
                                     val result = engine.search(
                                         rawQuery = query.trim(),
                                         kind = kind,
-                                        maxResults = 80,
+                                        maxResults = 200,
                                         includeImages = includeImages,
                                         includeVideos = includeVideos,
                                         pageLimit = externalPageLimit,

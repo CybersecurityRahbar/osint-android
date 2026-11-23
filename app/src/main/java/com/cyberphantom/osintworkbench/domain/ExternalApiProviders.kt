@@ -785,8 +785,8 @@ private fun readBounded(stream: java.io.InputStream?): String {
         val output = ByteArrayOutputStream()
         val buffer = ByteArray(8_192)
         var total = 0
-        while (total < 1_000_000) {
-            val count = input.read(buffer, 0, minOf(buffer.size, 1_000_000 - total))
+        while (total < 3_000_000) {
+            val count = input.read(buffer, 0, minOf(buffer.size, 3_000_000 - total))
             if (count <= 0) break
             output.write(buffer, 0, count)
             total += count
