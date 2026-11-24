@@ -74,6 +74,17 @@ jobs:
           disable-animations: true
           script: gradle connectedDebugAndroidTest --stacktrace
 
+      - name: Upload Android test reports for diagnosis
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-test-reports
+          path: |
+            app/build/reports/androidTests/connected/debug
+            app/build/outputs/androidTest-results/connected/debug
+          if-no-files-found: ignore
+          retention-days: 7
+
       - name: Prepare stable preview signing
         if: ${{ env.PREVIEW_KEYSTORE_BASE64 != '' && env.PREVIEW_KEYSTORE_PASSWORD != '' }}
         shell: bash
