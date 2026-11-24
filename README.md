@@ -2,7 +2,7 @@
 
 **OSINT Workbench** is an offline-first Android OSINT workbench for collecting publicly available information, preserving evidence, and building explainable technical relationships without a private backend or a bundled large language model.
 
-> **Active preview: v0.11.2-preview.** This build addresses field-test failures in news parsing, username classification, public search extraction, and private-source session separation. It remains an actively developed prototype, not a complete replacement for SpiderFoot, Maltego, or a dedicated vulnerability scanner.
+> **Active preview: v0.11.3-preview.** This build fixes a Compose nested-scroll crash when opening visual theme settings. It remains an actively developed prototype, not a complete replacement for SpiderFoot, Maltego, or a dedicated vulnerability scanner.
 
 - **Flexible search target.** Choose any integer from 10 to 500 for identifier and news results using either a numeric field or a slider; the selection is saved locally. This is a result cap, not a literal count of HTTP/API calls.
 - **Strict SerpApi request budget.** Set a separate per-identifier-search ceiling from 1 to 10 outbound SerpApi calls (default 4). The same budget covers web pages, image search, video search, and fallbacks. Failed attempts consume the local cap but are not necessarily billed by SerpApi.
@@ -100,7 +100,7 @@ Requirements: JDK 17 and Android SDK API 36. The Gradle Wrapper downloads the pi
 
 APK output: `app/build/outputs/apk/debug/app-debug.apk`
 
-GitHub Actions runs unit tests, an Android emulator RSS/Atom parser suite against the actual Android XML provider, and builds the preview APK. It uploads `osint-workbench-v0.8.0-preview-apk` only when the stable signing secrets are configured; otherwise it deliberately publishes no installable artifact.
+GitHub Actions runs unit tests, an Android emulator RSS/Atom parser suite against the actual Android XML provider, and builds the preview APK. It uploads the versioned preview APK artifact only when the stable signing secrets are configured; otherwise it deliberately publishes no installable artifact.
 
 ## Cumulative context
 

@@ -17,8 +17,8 @@ android {
         manifestPlaceholders["appLabel"] = "OSINT Workbench"
         minSdk = 26
         targetSdk = 36
-        versionCode = 16
-        versionName = "0.11.2"
+        versionCode = 17
+        versionName = "0.11.3"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -42,7 +42,7 @@ android {
             if (hasStablePreviewSigning) {
                 signingConfig = signingConfigs.getByName("previewStable")
             }
-            manifestPlaceholders["appLabel"] = "OSINT Workbench Preview 0.11.2"
+            manifestPlaceholders["appLabel"] = "OSINT Workbench Preview 0.11.3"
         }
     }
 
@@ -91,4 +91,5 @@ dependencies {
 
     androidTestImplementation("androidx.test:runner:1.7.0")
     androidTestImplementation("androidx.test.ext:junit:1.3.0")
+    androidTestImplementation("androidx.compose.ui:ui-test-junit4")
 }

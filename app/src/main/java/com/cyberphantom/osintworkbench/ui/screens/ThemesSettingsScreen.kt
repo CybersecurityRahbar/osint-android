@@ -40,7 +40,12 @@ fun ThemesSettingsScreen(onBack: () -> Unit) {
     val context = LocalContext.current
     val view = LocalView.current
 
-    ScreenColumn {
+    // SettingsScreen already owns the vertical scroll container for this subpage.
+    // A second verticalScroll here receives unbounded height constraints and crashes Compose.
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(13.dp)
+    ) {
         GhostButton("رجوع إلى الإعدادات", onBack, accent = IntelColors.TextDim)
         ScreenLead(
             code = "MODULE 06 / VISUAL SYSTEM",
