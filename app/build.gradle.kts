@@ -69,6 +69,8 @@ android {
 
 dependencies {
     implementation(platform("androidx.compose:compose-bom:2026.04.01"))
+    // The Android-test configuration needs its own Compose BOM import.
+    androidTestImplementation(platform("androidx.compose:compose-bom:2026.04.01"))
     implementation("androidx.activity:activity-compose:1.12.4")
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.ui:ui-tooling-preview")

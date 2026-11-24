@@ -1811,3 +1811,24 @@
 
 ### التحقق
 - أُضيف اختبار واجهة آلي يغطي الانتقال الفعلي إلى شاشة الثيمات. نتيجة GitHub Actions ووجود APK قابل للتثبيت سيُسجلان بعد انتهاء تشغيل CI لهذا التغيير.
+
+## 2026-11-24 — متابعة فشل CI وإصلاح اعتماد اختبار Compose (v0.11.3)
+
+### مراجعة التشغيل الفاشل #154
+- راجعت سجلات التشغيل `45400630481` المرتبط بالالتزام `b24a4ae7cff7e2b1fdbc6968cb481d81593ff8f8` بدلاً من التخمين من صفحة الحالة.
+- اختبار Kotlin/JVM نجح. فشل مسار Android instrumentation تحديداً عند `:app:mergeDebugAndroidTestManifest` لأن Gradle لم يجد إصداراً لـ`androidx.compose.ui:ui-test-junit4` (`Could not find androidx.compose.ui:ui-test-junit4:`).
+- السبب: استورد ملف Gradle Compose BOM في `implementation` فقط، ولم يستورده ضمن configuration الخاصة بـ`androidTestImplementation`. وبالتالي لم يحصل اعتماد UI test المضاف حديثاً على version constraint. هذا خطأ في تهيئة اعتماد الاختبار، وليس خطأ في كود شاشة الثيمات.
+- ظهرت في سجل المحاكي رسالة أولية `Unable to connect to adb daemon on port: 5037` ومحاولتا adb فاشلتان أثناء بدء المحاكي. قارنتها بالتشغيل السابق #153 الناجح، حيث ظهرت الرسائل نفسها ثم أكمل المحاكي الاختبارات والبناء بنجاح؛ لذلك هي رسائل بدء تشغيل مؤقتة وليست سبب فشل #154.
+
+### الإصلاح الثاني
+- إضافة `androidTestImplementation(platform("androidx.compose:compose-bom:2026.04.01"))` حتى يطبّق Compose BOM قيود الإصدارات على اعتماد `ui-test-junit4` في Android-test runtime classpath.
+- لا تتغير نسخة التطبيق عن 0.11.3 / versionCode 17، لأن هذه النسخة لم تنتج APK منشوراً بعد.
+- يستمر اختبار التنقل `ThemesSettingsNavigationAndroidTest` في تغطية فتح الإعدادات ثم شاشة الثيمات. لا يُعلن الإصلاح نهائياً إلا بعد نجاح هذا الاختبار والبناء ورفع APK ثابت التوقيع.
+
+### مراجع التحقق
+- التشغيل الفاشل #154: https://github.com/CybersecurityRahbar/osint-android/actions/runs/45400630481
+- تشغيل #153 الذي نجح وأظهر رسائل بدء ADB المؤقتة نفسها: https://github.com/CybersecurityRahbar/osint-android/actions/runs/45237400979
+- دليل Android الرسمي لاستخدام Compose BOM: https://developer.android.com/develop/ui/compose/bom (يبيّن ضرورة استيراد BOM في `androidTestImplementation` عند استخدام Compose UI tests).
+
+### الحالة
+- تم إصلاح configuration في ملف Gradle. يجب التحقق من ذلك عبر تشغيل CI جديد قبل توفير APK للتثبيت.
