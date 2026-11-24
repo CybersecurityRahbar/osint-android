@@ -1832,3 +1832,22 @@
 
 ### الحالة
 - تم إصلاح configuration في ملف Gradle. يجب التحقق من ذلك عبر تشغيل CI جديد قبل توفير APK للتثبيت.
+
+## 2026-11-24 — إصلاح خطأ ترجمة اختبار الثيمات بعد حل BOM (المحاولة التالية لـv0.11.3)
+
+### مراجعة التشغيل #155
+- بعد إضافة Compose BOM إلى `androidTestImplementation`، تجاوز CI مرحلة حل الاعتمادات ونجحت اختبارات Kotlin/JVM، ثم وصل إلى ترجمة اختبار Android UI.
+- سجل التشغيل `45402594932` فشل عند `:app:compileDebugAndroidTestKotlin` برسالة: `Unresolved reference 'assertExists'` في اختبار `ThemesSettingsNavigationAndroidTest.kt`.
+- السبب هو استخدام assertion غير متاح في مجموعة Compose UI Test الموجودة في المشروع؛ لا علاقة لهذا الخطأ بمصدر الانهيار الأصلي في شاشة الثيمات.
+
+### التصحيح
+- استبدال import واستدعاءات `assertExists()` بـ`assertIsDisplayed()`، وهي assertion مدعومة وموثقة في AndroidX Compose UI Test.
+- إبقاء اختبار التنقل كما هو: فتح تبويب الإعدادات، فتح شاشة الثيمات، ثم التأكد من ظهور خياري الثيم الأساسي والمستقبلي.
+- رقم النسخة ما زال 0.11.3 / versionCode 17؛ لم يُنشَر APK من هذه النسخة بعد.
+
+### المراجع
+- تشغيل CI #155: https://github.com/CybersecurityRahbar/osint-android/actions/runs/45402594932
+- مرجع AndroidX الرسمي لـ`SemanticsNodeInteraction.assertIsDisplayed`: https://developer.android.com/reference/kotlin/androidx/compose/ui/test/SemanticsNodeInteraction
+
+### الحالة
+- إصلاح ترجمة الاختبار أُرسل إلى main. لا يُعد الإصدار جاهزاً حتى نجاح CI كاملاً، بما فيه تنفيذ اختبار واجهة الثيمات وتوقيع APK ورفعه.
