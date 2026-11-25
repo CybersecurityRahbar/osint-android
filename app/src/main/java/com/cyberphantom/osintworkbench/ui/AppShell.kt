@@ -98,6 +98,7 @@ fun WorkbenchApp() {
     var tab by rememberSaveable { mutableStateOf(WorkbenchTab.HOME) }
     var tabBackStack by remember { mutableStateOf(emptyList<WorkbenchTab>()) }
     var researchScreenVisited by rememberSaveable { mutableStateOf(false) }
+    var reconScreenVisited by rememberSaveable { mutableStateOf(false) }
     var reconSeed by rememberSaveable { mutableStateOf("") }
     var researchSeed by rememberSaveable { mutableStateOf("") }
     var researchNews by rememberSaveable { mutableStateOf(false) }
@@ -130,6 +131,7 @@ fun WorkbenchApp() {
             tab = destination
         }
         if (destination == WorkbenchTab.RESEARCH) researchScreenVisited = true
+        if (destination == WorkbenchTab.RECON) reconScreenVisited = true
     }
 
     fun navigateBack() {
@@ -153,8 +155,9 @@ fun WorkbenchApp() {
         // while the opaque workbench surface is shown above it.
         AndroidView(
             modifier = Modifier.fillMaxSize().safeDrawingPadding()
-                    .padding(horizontal = if (sessionVisible) 4.dp else 0.dp)
-                    .padding(top = if (sessionVisible) 84.dp else 0.dp),
+                    .padding(horizontal = if (sessionVisible) 12.dp else 0.dp)
+                    .padding(top = if (sessionVisible) 128.dp else 0.dp)
+                    .padding(bottom = if (sessionVisible) 8.dp else 0.dp),
             factory = { context ->
                 FrameLayout(context).apply {
                     setBackgroundColor(android.graphics.Color.TRANSPARENT)
@@ -203,11 +206,7 @@ fun WorkbenchApp() {
                         },
                         onOpenTab = { navigateTo(it) }
                     )
-                    WorkbenchTab.RECON -> ReconScreen(
-                        store = store,
-                        initialTarget = reconSeed,
-                        onSaved = { refresh() }
-                    )
+                    WorkbenchTab.RECON -> Unit
                     WorkbenchTab.NETWORK -> NetworkScreen(entities = entities, relations = relations)
                     WorkbenchTab.CASES -> CasesScreen(
                         cases = cases,
@@ -221,6 +220,23 @@ fun WorkbenchApp() {
                         dataVersion = dataVersion,
                         onDataChanged = { refresh() }
                     )
+                }
+
+                // Retain recon scans after their first visit; leaving the tab must not
+                // cancel the screen's coroutine or clear the live progress/report.
+                if (tab == WorkbenchTab.RECON || reconScreenVisited) {
+                    Box(
+                        Modifier
+                            .fillMaxSize()
+                            .offset(x = if (tab == WorkbenchTab.RECON) 0.dp else 1200.dp)
+                            .zIndex(if (tab == WorkbenchTab.RECON) 3f else 0.4f)
+                    ) {
+                        ReconScreen(
+                            store = store,
+                            initialTarget = reconSeed,
+                            onSaved = { refresh() }
+                        )
+                    }
                 }
 
                 // Retain the research subtree after the first visit so navigation
