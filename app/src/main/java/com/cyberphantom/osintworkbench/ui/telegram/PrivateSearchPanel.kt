@@ -115,6 +115,7 @@ fun PrivateSearchPanel(
         currentStage = null
         log = emptyList()
         status = "تهيئة الطلب والتحقق من الجلسة المحفوظة…"
+        TelegramSessionRuntime.isSearchActive = true
 
         activeJob = scope.launch {
             try {
@@ -173,6 +174,7 @@ fun PrivateSearchPanel(
                     runCatching { TelegramWeb.diagnostics(it).summary() }.getOrNull()
                 }
             } finally {
+                TelegramSessionRuntime.isSearchActive = false
                 busy = false
                 activeJob = null
             }
@@ -450,7 +452,10 @@ private fun ScreenBlock(
 }
 
 
-private object TelegramSessionRuntime {
+internal object TelegramSessionRuntime {
     /** A process-wide lock prevents two recomposed search panels from driving one WebView. */
     val controller = TelegramSessionController(RetainedWebViewTelegramDriver())
+
+    @Volatile
+    var isSearchActive: Boolean = false
 }

@@ -1,5 +1,7 @@
 package com.cyberphantom.osintworkbench.ui
 
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -58,6 +60,7 @@ import com.cyberphantom.osintworkbench.ui.design.Hairline
 import com.cyberphantom.osintworkbench.ui.design.GhostButton
 import com.cyberphantom.osintworkbench.ui.design.IntelColors
 import com.cyberphantom.osintworkbench.ui.design.MicroLabel
+import com.cyberphantom.osintworkbench.ui.design.NoteBlock
 import com.cyberphantom.osintworkbench.ui.design.NeonAtmosphereBackground
 import com.cyberphantom.osintworkbench.ui.design.WorkbenchThemeState
 import com.cyberphantom.osintworkbench.ui.design.WorkbenchVisualTheme
@@ -93,6 +96,8 @@ fun WorkbenchApp() {
     val scope = rememberCoroutineScope()
 
     var tab by rememberSaveable { mutableStateOf(WorkbenchTab.HOME) }
+    var tabBackStack by remember { mutableStateOf(emptyList<WorkbenchTab>()) }
+    var researchScreenVisited by rememberSaveable { mutableStateOf(false) }
     var reconSeed by rememberSaveable { mutableStateOf("") }
     var researchSeed by rememberSaveable { mutableStateOf("") }
     var researchNews by rememberSaveable { mutableStateOf(false) }
@@ -119,11 +124,37 @@ fun WorkbenchApp() {
     LaunchedEffect(Unit) { refresh() }
     val sessionVisible by PrivateSessionHost.sessionVisible
 
+    fun navigateTo(destination: WorkbenchTab) {
+        if (destination != tab) {
+            tabBackStack = (tabBackStack + tab).takeLast(24)
+            tab = destination
+        }
+        if (destination == WorkbenchTab.RESEARCH) researchScreenVisited = true
+    }
+
+    fun navigateBack() {
+        if (sessionVisible) {
+            PrivateSessionHost.hideSession()
+            return
+        }
+        if (tabBackStack.isNotEmpty()) {
+            tab = tabBackStack.last()
+            tabBackStack = tabBackStack.dropLast(1)
+        } else if (tab != WorkbenchTab.HOME) {
+            tab = WorkbenchTab.HOME
+        }
+        // At HOME, consume Back rather than finishing the Activity.
+    }
+
+    BackHandler(enabled = true) { navigateBack() }
+
     Box(Modifier.fillMaxSize().background(IntelColors.Base)) {
         // One permanent WebView host. The exact SessionWebView instance remains attached
         // while the opaque workbench surface is shown above it.
         AndroidView(
-            modifier = Modifier.fillMaxSize().safeDrawingPadding(),
+            modifier = Modifier.fillMaxSize().safeDrawingPadding()
+                    .padding(horizontal = if (sessionVisible) 4.dp else 0.dp)
+                    .padding(top = if (sessionVisible) 84.dp else 0.dp),
             factory = { context ->
                 FrameLayout(context).apply {
                     setBackgroundColor(android.graphics.Color.TRANSPARENT)
@@ -154,7 +185,7 @@ fun WorkbenchApp() {
                 .offset(x = if (sessionVisible) 1200.dp else 0.dp)
                 .zIndex(2f)
         ) {
-            OpsHeader(activeTab = tab, onOpenSettings = { tab = WorkbenchTab.SETTINGS })
+            OpsHeader(activeTab = tab, onOpenSettings = { navigateTo(WorkbenchTab.SETTINGS) })
             Box(Modifier.weight(1f).fillMaxWidth()) {
                 when (tab) {
                     WorkbenchTab.HOME -> HomeScreen(
@@ -163,14 +194,14 @@ fun WorkbenchApp() {
                         cases = cases,
                         onRecon = { target ->
                             reconSeed = target
-                            tab = WorkbenchTab.RECON
+                            navigateTo(WorkbenchTab.RECON)
                         },
                         onResearch = { query, news ->
                             researchSeed = query
                             researchNews = news
-                            tab = WorkbenchTab.RESEARCH
+                            navigateTo(WorkbenchTab.RESEARCH)
                         },
-                        onOpenTab = { tab = it }
+                        onOpenTab = { navigateTo(it) }
                     )
                     WorkbenchTab.RECON -> ReconScreen(
                         store = store,
@@ -183,13 +214,7 @@ fun WorkbenchApp() {
                         store = store,
                         onSaved = { refresh() }
                     )
-                    WorkbenchTab.RESEARCH -> ResearchScreen(
-                        store = store,
-                        initialQuery = researchSeed,
-                        startInNews = researchNews,
-                        onSaved = { refresh() },
-                        onOpenSettings = { tab = WorkbenchTab.SETTINGS }
-                    )
+                    WorkbenchTab.RESEARCH -> Unit
                     WorkbenchTab.SETTINGS -> SettingsScreen(
                         stats = stats,
                         store = store,
@@ -197,40 +222,70 @@ fun WorkbenchApp() {
                         onDataChanged = { refresh() }
                     )
                 }
+
+                // Retain the research subtree after the first visit so navigation
+                // does not dispose active searches or their progress state.
+                if (tab == WorkbenchTab.RESEARCH || researchScreenVisited) {
+                    Box(
+                        Modifier
+                            .fillMaxSize()
+                            .offset(x = if (tab == WorkbenchTab.RESEARCH) 0.dp else 1200.dp)
+                            .zIndex(if (tab == WorkbenchTab.RESEARCH) 3f else 0.5f)
+                    ) {
+                        ResearchScreen(
+                            store = store,
+                            initialQuery = researchSeed,
+                            startInNews = researchNews,
+                            onSaved = { refresh() },
+                            onOpenSettings = { navigateTo(WorkbenchTab.SETTINGS) },
+                            isCurrentTab = tab == WorkbenchTab.RESEARCH && !sessionVisible
+                        )
+                    }
+                }
             }
-            BottomRail(selected = tab, onSelect = { WorkbenchThemeState.tap(null); tab = it })
+            BottomRail(selected = tab, onSelect = {
+                WorkbenchThemeState.tap(null)
+                navigateTo(it)
+            })
         }
 
         if (sessionVisible) {
-            TelegramSessionTopBar(Modifier.align(Alignment.TopCenter).zIndex(5f))
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .padding(3.dp)
+                    .border(1.dp, IntelColors.HairlineStrong, RoundedCornerShape(4.dp))
+                    .zIndex(4.5f)
+            )
+            TelegramSessionFrame(Modifier.align(Alignment.TopCenter).zIndex(5f))
         }
     }
 }
 
 @Composable
-private fun TelegramSessionTopBar(modifier: Modifier = Modifier) {
+private fun TelegramSessionFrame(modifier: Modifier = Modifier) {
     Surface(
-        modifier = modifier.fillMaxWidth().statusBarsPadding(),
-        color = IntelColors.Void.copy(alpha = 0.96f)
+        modifier = modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 4.dp, vertical = 4.dp),
+        color = IntelColors.Base,
+        shape = RoundedCornerShape(4.dp),
+        border = BorderStroke(1.dp, IntelColors.HairlineStrong)
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(
-                    "جلسة Telegram الحالية",
-                    color = IntelColors.Text,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 11.sp
+        Column(Modifier.padding(horizontal = 8.dp, vertical = 7.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text("نافذة جلسة المصدر", color = IntelColors.Text, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    MicroLabel("SESSION VIEW · FULL HEIGHT", IntelColors.Signal)
+                }
+                GhostButton(
+                    text = "إغلاق",
+                    onClick = { PrivateSessionHost.hideSession() },
+                    accent = IntelColors.TextDim
                 )
-                MicroLabel("SAME SAVED SESSION · CLOSE TO RETURN", IntelColors.Signal)
             }
-            Spacer(Modifier.weight(1f))
-            GhostButton(
-                text = "العودة للتطبيق",
-                onClick = { PrivateSessionHost.hideSession() },
-                accent = IntelColors.Signal
+            NoteBlock(
+                "استخدم التمرير داخل Telegram نفسه. تبقى الجلسة الحالية مفتوحة كما هي ويستخدم البحث الآلي WebView نفسها.",
+                IntelColors.Signal,
+                "TELEGRAM SESSION"
             )
         }
     }

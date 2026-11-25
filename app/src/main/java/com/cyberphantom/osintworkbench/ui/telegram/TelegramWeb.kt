@@ -22,6 +22,7 @@ import kotlinx.coroutines.withTimeout
 import org.json.JSONArray
 import org.json.JSONObject
 import org.json.JSONTokener
+import com.cyberphantom.osintworkbench.domain.TelegramAuthenticationProbe
 import java.lang.ref.WeakReference
 import kotlin.coroutines.resume
 
@@ -123,7 +124,7 @@ object PrivateSessionHost {
         retainedView?.let { view ->
             // Persist the existing cookie jar only. No sign-out or site-data clearing occurs.
             CookieManager.getInstance().flush()
-            view.onPause()
+            if (!TelegramSessionRuntime.isSearchActive) view.onPause()
         }
     }
 
@@ -163,7 +164,8 @@ data class TelegramSnapshot(
     val peerRoute: String = "",
     val isAuthenticated: Boolean = false,
     val isLoginPage: Boolean = false,
-    val hasAppShell: Boolean = false
+    val hasAppShell: Boolean = false,
+    val authEvidence: String = ""
 )
 
 data class TelegramDiagnostics(
@@ -185,6 +187,7 @@ data class TelegramDiagnostics(
             }"
         )
         appendLine("PAGE: ${snapshot.readyState} · APP SHELL: ${snapshot.hasAppShell}")
+        appendLine("AUTH EVIDENCE: ${snapshot.authEvidence.ifBlank { "none" }}")
         appendLine("TARGET ROUTE: ${snapshot.peerRoute.take(40).ifBlank { "غير محدد" }}")
         appendLine("CHAT TITLE DETECTED: ${snapshot.title.isNotBlank()}")
         appendLine("COMPOSER: ${snapshot.hasComposer} · SEND CONTROL: ${snapshot.hasSendButton}")
@@ -285,7 +288,11 @@ object TelegramWeb {
         }
         throw IllegalStateException(
             "لم أستطع إثبات أن جلسة Telegram الحالية مسجّلة الدخول خلال 15 ثانية. لم يتم حذف الجلسة أو بدء تسجيل دخول جديد." +
-                (latest?.let { " · حالة الصفحة: ${it.readyState}; واجهة Telegram: ${it.hasAppShell}" } ?: "") +
+                (latest?.let {
+                    " · حالة الصفحة: ${it.readyState}; واجهة Telegram: ${it.hasAppShell}; " +
+                        "الأدلة: ${it.authEvidence.ifBlank { "none" }}; " +
+                        "عنوان المحادثة: ${it.title.isNotBlank()}; محرر الرسائل: ${it.hasComposer}"
+                } ?: "") +
                 (readFailure?.let { " · تعذر قراءة الصفحة: $it" } ?: "")
         )
     }
@@ -432,20 +439,27 @@ object TelegramWeb {
     suspend fun snapshot(view: WebView): TelegramSnapshot {
         val script = """
             (function() {
-              function first(selectors, root) {
-                root = root || document;
-                for (var i = 0; i < selectors.length; i++) {
-                  var node = root.querySelector(selectors[i]);
-                  if (node) return node;
-                }
-                return null;
-              }
               function visible(node) {
                 if (!node) return false;
                 var style = window.getComputedStyle(node);
                 var rect = node.getBoundingClientRect();
+                var opacity = Number(style.opacity || 1);
                 return style.display !== 'none' && style.visibility !== 'hidden' &&
-                  rect.width > 0 && rect.height > 0;
+                  opacity > 0 && rect.width > 0 && rect.height > 0 &&
+                  rect.bottom > 0 && rect.right > 0 &&
+                  rect.top < window.innerHeight && rect.left < window.innerWidth;
+              }
+              // Telegram Web K may keep hidden duplicate nodes mounted during navigation.
+              // Only visible matches count as positive session evidence.
+              function first(selectors, root) {
+                root = root || document;
+                for (var i = 0; i < selectors.length; i++) {
+                  var nodes = root.querySelectorAll(selectors[i]);
+                  for (var j = 0; j < nodes.length; j++) {
+                    if (visible(nodes[j])) return nodes[j];
+                  }
+                }
+                return null;
               }
 
               var titleNode = first([
@@ -487,6 +501,9 @@ object TelegramWeb {
               var isLoginPage = visible(authRoot) || (visible(phoneInput) && loginLanguage);
 
               var appShell = first([
+                '#page-chats',
+                '.page-chats',
+                '#main-columns',
                 '#column-left',
                 '.sidebar-left',
                 '.Sidebar',
@@ -496,7 +513,13 @@ object TelegramWeb {
                 '[class*="chatList" i]',
                 '.chatlist'
               ]);
-              var hasAppShell = visible(appShell) && !isLoginPage;
+              var hasAppShell = !!appShell && !isLoginPage;
+              var authEvidence = [];
+              if (document.readyState !== 'loading') authEvidence.push('document-ready');
+              if (hasAppShell) authEvidence.push('telegram-chat-shell-visible');
+              if (titleNode) authEvidence.push('chat-header-visible');
+              if (composer) authEvidence.push('message-composer-visible');
+              if (isLoginPage) authEvidence.push('login-screen-visible');
               var isAuthenticated = !isLoginPage &&
                 (hasAppShell || (!!titleNode && !!composer));
 
@@ -575,6 +598,7 @@ object TelegramWeb {
                 isAuthenticated:!!isAuthenticated,
                 isLoginPage:!!isLoginPage,
                 hasAppShell:!!hasAppShell,
+                authEvidence:authEvidence.join(','),
                 messages:messages
               });
             })()
@@ -601,18 +625,29 @@ object TelegramWeb {
                 )
             }
         }
+        val title = root.optString("title")
+        val hasComposer = root.optBoolean("hasComposer")
+        val isLoginPage = root.optBoolean("isLoginPage")
+        val hasAppShell = root.optBoolean("hasAppShell")
+        val isAuthenticated = TelegramAuthenticationProbe.isAuthenticated(
+            isLoginPage = isLoginPage,
+            hasVisibleChatShell = hasAppShell,
+            hasVisibleChatTitle = title.isNotBlank(),
+            hasVisibleComposer = hasComposer
+        )
         return TelegramSnapshot(
             url = root.optString("url"),
-            title = root.optString("title"),
-            hasComposer = root.optBoolean("hasComposer"),
+            title = title,
+            hasComposer = hasComposer,
             hasSendButton = root.optBoolean("hasSendButton"),
             editorText = root.optString("editorText"),
             readyState = root.optString("readyState"),
             messages = messages,
             peerRoute = root.optString("peerRoute"),
-            isAuthenticated = root.optBoolean("isAuthenticated"),
-            isLoginPage = root.optBoolean("isLoginPage"),
-            hasAppShell = root.optBoolean("hasAppShell")
+            isAuthenticated = isAuthenticated,
+            isLoginPage = isLoginPage,
+            hasAppShell = hasAppShell,
+            authEvidence = root.optString("authEvidence")
         )
     }
 

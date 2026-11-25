@@ -1,6 +1,7 @@
 package com.cyberphantom.osintworkbench.ui.screens
 
 import android.app.DatePickerDialog
+import androidx.activity.compose.BackHandler
 import android.app.TimePickerDialog
 import android.os.SystemClock
 import android.widget.Toast
@@ -30,6 +31,7 @@ import androidx.compose.material.icons.filled.ManageSearch
 import androidx.compose.material.icons.filled.WarningAmber
 import androidx.compose.material3.Icon
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
@@ -111,7 +113,8 @@ fun ResearchScreen(
     initialQuery: String,
     startInNews: Boolean,
     onSaved: () -> Unit,
-    onOpenSettings: () -> Unit
+    onOpenSettings: () -> Unit,
+    isCurrentTab: Boolean = true
 ) {
     val context = LocalContext.current
     val uriHandler = LocalUriHandler.current
@@ -126,6 +129,7 @@ fun ResearchScreen(
     var serpApiRequestLimit by rememberSaveable { mutableStateOf(apiProviderSettings.serpApiRequestLimit()) }
     var serpApiRequestLimitInput by rememberSaveable { mutableStateOf(serpApiRequestLimit.toString()) }
     var mode by rememberSaveable { mutableStateOf(if (startInNews) ResearchMode.NEWS else ResearchMode.IDENTIFIERS) }
+    var privateSourcesVisited by rememberSaveable { mutableStateOf(false) }
     var query by rememberSaveable { mutableStateOf(initialQuery) }
     var kind by rememberSaveable { mutableStateOf(IdentifierKind.NAME) }
     var includeImages by rememberSaveable { mutableStateOf(true) }
@@ -186,6 +190,11 @@ fun ResearchScreen(
         }
     }
 
+    BackHandler(enabled = isCurrentTab && mode != ResearchMode.IDENTIFIERS) {
+        mode = ResearchMode.IDENTIFIERS
+        error = null
+    }
+
     LaunchedEffect(initialQuery, startInNews) {
         if (initialQuery.isNotBlank()) query = initialQuery
         mode = if (startInNews) ResearchMode.NEWS else ResearchMode.IDENTIFIERS
@@ -213,7 +222,11 @@ fun ResearchScreen(
                 ModeChip(
                     selected = mode == item,
                     label = item.label,
-                    onClick = { mode = item; error = null },
+                    onClick = {
+                        if (item == ResearchMode.PRIVATE_SOURCES) privateSourcesVisited = true
+                        mode = item
+                        error = null
+                    },
                     modifier = Modifier.weight(1f),
                     accent = IntelColors.Violet
                 )
@@ -419,11 +432,7 @@ fun ResearchScreen(
         }
 
         when (mode) {
-            ResearchMode.PRIVATE_SOURCES -> PrivateSearchPanel(
-                store = store,
-                onSaved = onSaved,
-                onOpenSettings = onOpenSettings
-            )
+            ResearchMode.PRIVATE_SOURCES -> Unit
             ResearchMode.NEWS -> {
                 IntelPanel(accent = IntelColors.Blue) {
                     MicroLabel("NEWS / MULTI-SOURCE", IntelColors.Blue)
@@ -871,6 +880,17 @@ fun ResearchScreen(
                         }
                     }
                 }
+            }
+        }
+        if (privateSourcesVisited) {
+            // Keep this exact panel node composed when changing the inner research mode.
+            Column(
+                modifier = Modifier.fillMaxWidth().then(
+                    if (mode == ResearchMode.PRIVATE_SOURCES) Modifier
+                    else Modifier.height(1.dp).graphicsLayer { alpha = 0f }
+                )
+            ) {
+                PrivateSearchPanel(store = store, onSaved = onSaved, onOpenSettings = onOpenSettings)
             }
         }
         Spacer(Modifier.size(2.dp))
