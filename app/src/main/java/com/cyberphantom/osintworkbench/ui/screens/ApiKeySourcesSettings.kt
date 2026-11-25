@@ -1,5 +1,6 @@
 package com.cyberphantom.osintworkbench.ui.screens
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -140,6 +141,15 @@ fun ApiKeySourcesSettings(onBack: () -> Unit = {}) {
     val selectedProvider = route.substringAfter("provider:", "")
         .takeIf(String::isNotBlank)
         ?.let { raw -> runCatching { ApiProviderId.valueOf(raw) }.getOrNull() }
+
+    BackHandler(enabled = route != "home") {
+        route = when {
+            selectedProvider != null ->
+                if (selectedProvider.group == ApiProviderGroup.SEARCH) "search" else "news"
+            route == "search" || route == "news" -> "home"
+            else -> "home"
+        }
+    }
 
     if (route == "closed") {
         SectionBar("01", "إعداد مفاتيح المصادر الخاصة", "9 API", IntelColors.Violet)

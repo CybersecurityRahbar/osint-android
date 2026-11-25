@@ -1,6 +1,7 @@
 package com.cyberphantom.osintworkbench.ui.screens
 
 import android.content.Intent
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
@@ -159,6 +160,10 @@ fun DataSection(store: LocalStore, dataVersion: Int, onDataChanged: () -> Unit, 
     var status by remember { mutableStateOf<String?>(null) }
     var confirmErase by remember { mutableStateOf(false) }
     var dataPage by rememberSaveable { mutableStateOf("home") }
+
+    BackHandler(enabled = confirmErase || dataPage != "home") {
+        if (confirmErase) confirmErase = false else dataPage = "home"
+    }
 
     LaunchedEffect(dataVersion) {
         scans = withContext(Dispatchers.IO) { runCatching { store.scans(20) }.getOrDefault(emptyList()) }

@@ -1,5 +1,6 @@
 package com.cyberphantom.osintworkbench.ui.screens
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -41,6 +42,10 @@ private enum class SettingsPage {
 @Composable
 fun SettingsScreen(stats: StoreStats, store: LocalStore, dataVersion: Int, onDataChanged: () -> Unit) {
     var page by rememberSaveable { mutableStateOf(SettingsPage.HOME) }
+
+    BackHandler(enabled = page != SettingsPage.HOME) {
+        page = SettingsPage.HOME
+    }
 
     ScreenColumn {
         when (page) {

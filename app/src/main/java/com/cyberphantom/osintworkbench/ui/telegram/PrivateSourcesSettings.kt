@@ -1,5 +1,6 @@
 package com.cyberphantom.osintworkbench.ui.telegram
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -51,6 +52,14 @@ fun PrivateSourcesSettings(localStore: LocalStore, onSaved: () -> Unit, onBack: 
     var sources by remember { mutableStateOf(configStore.loadBots()) }
     var editing by remember { mutableStateOf<PrivateSourceBot?>(null) }
     var page by rememberSaveable { mutableStateOf("home") }
+    BackHandler(enabled = page != "home") {
+        if (page == "editor") {
+            editing = null
+            page = "list"
+        } else {
+            page = "home"
+        }
+    }
     var draft by remember {
         mutableStateOf(
             PrivateSourceBot(
