@@ -42,19 +42,25 @@ object PrivateSessionHost {
     val sessionVisible: State<Boolean> get() = visibleState
 
     @Synchronized
-    fun getOrCreate(context: Context): SessionWebView {
+    fun getOrCreate(
+        context: Context,
+        loadTelegramOnCreate: Boolean = true
+    ): SessionWebView {
         retainedView?.let { return it }
         return SessionWebView(context).also { view ->
-            TelegramWeb.configure(view)
+            TelegramWeb.configure(view, loadInitialPage = loadTelegramOnCreate)
             retainedView = view
             observableView.value = view
         }
     }
 
     @Synchronized
-    fun mountRoot(container: FrameLayout) {
+    fun mountRoot(
+        container: FrameLayout,
+        loadTelegramOnCreate: Boolean = true
+    ) {
         rootContainer = WeakReference(container)
-        val view = getOrCreate(container.context)
+        val view = getOrCreate(container.context, loadTelegramOnCreate)
         if (view.parent !== container) {
             (view.parent as? ViewGroup)?.removeView(view)
             container.addView(
@@ -196,7 +202,7 @@ object TelegramWeb {
     private const val TELEGRAM_URL = "https://web.telegram.org/k/"
     @Volatile private var lastWebViewIssue: String? = null
 
-    fun configure(view: WebView) {
+    fun configure(view: WebView, loadInitialPage: Boolean = true) {
         view.settings.apply {
             javaScriptEnabled = true
             domStorageEnabled = true
@@ -246,7 +252,7 @@ object TelegramWeb {
             }
         }
         view.setBackgroundColor(Color.TRANSPARENT)
-        if (view.url.isNullOrBlank()) view.loadUrl(TELEGRAM_URL)
+        if (loadInitialPage && view.url.isNullOrBlank()) view.loadUrl(TELEGRAM_URL)
     }
 
     /**

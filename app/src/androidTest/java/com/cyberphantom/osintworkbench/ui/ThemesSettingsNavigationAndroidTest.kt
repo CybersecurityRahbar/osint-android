@@ -4,6 +4,7 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.cyberphantom.osintworkbench.data.LocalStore
@@ -37,8 +38,8 @@ class ThemesSettingsNavigationAndroidTest {
             }
         }
 
-        composeRule.onNodeWithText("الثيمات والمؤثرات").performClick()
-        composeRule.onNodeWithText("المظهر الأساسي").assertIsDisplayed()
-        composeRule.onNodeWithText("المظهر المستقبلي الجديد").assertIsDisplayed()
+        composeRule.onNodeWithText("الثيمات والمؤثرات").performScrollTo().performClick()
+        composeRule.onNodeWithText("المظهر الأساسي").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("المظهر المستقبلي الجديد").performScrollTo().assertIsDisplayed()
     }
 }

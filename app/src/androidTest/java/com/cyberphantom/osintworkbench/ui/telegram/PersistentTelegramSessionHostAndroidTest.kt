@@ -22,10 +22,10 @@ class PersistentTelegramSessionHostAndroidTest {
             AndroidView(
                 factory = { viewContext ->
                     FrameLayout(viewContext).apply {
-                        PrivateSessionHost.mountRoot(this)
+                        PrivateSessionHost.mountRoot(this, loadTelegramOnCreate = false)
                     }
                 },
-                update = { PrivateSessionHost.mountRoot(it) }
+                update = { PrivateSessionHost.mountRoot(it, loadTelegramOnCreate = false) }
             )
         }
 

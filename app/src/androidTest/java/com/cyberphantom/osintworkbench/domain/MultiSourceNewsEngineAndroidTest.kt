@@ -90,9 +90,9 @@ class MultiSourceNewsEngineAndroidTest {
             isAuthenticated = true,
             hasAppShell = true
         )
-        // The source's friendly label may differ from Telegram's real chat title.
-        // The explicit chatTitle field must hold the visible title to pass peer verification.
-        assertTrue(TelegramPeerMatcher.chatMatches(snapshot, "tellwhoobot", "Tell Whoo"))
+        // A direct @username route remains usable with the default friendly source label.
+        // A user-supplied chatTitle, when present, must still match the visible title.
+        assertTrue(TelegramPeerMatcher.chatMatches(snapshot, "tellwhoobot", ""))
         assertTrue(!TelegramPeerMatcher.chatMatches(snapshot, "tellwhoobot", "كاشف الأرقام"))
     }
 
@@ -111,7 +111,7 @@ class MultiSourceNewsEngineAndroidTest {
             hasAppShell = true
         )
         assertTrue(TelegramPeerMatcher.chatMatches(snapshot, "tellwhoobot", "Tell Whoo"))
-        assertTrue(!TelegramPeerMatcher.chatMatches(snapshot, "tellwhoobot", "كاشف الأرقام"))
+        assertTrue(!TelegramPeerMatcher.chatMatches(snapshot, "tellwhoobot", ""))
     }
 
 }

@@ -2025,3 +2025,29 @@
 ### حالة الجولة
 - هذه الجولة تغيّر الكود فعلياً إلى التصميم الجديد وتجهز Preview v0.12.0 بتوقيع التحديث الثابت نفسه.
 - لا تُعد المهمة ناجحة نهائياً حتى ينجح CI في تجميع Kotlin والاختبارات وAndroid instrumentation ورفع APK ثابت التوقيع، ثم يجري المستخدم اختبار جلسة Telegram الحقيقية على هاتفه. لا حاجة إلى حذف التطبيق أو مسح بياناته أو تسجيل الخروج.
+
+
+## 2026-11-25 — تحليل فشل CI رقم 161 ومعالجة اختبار واجهة الإعدادات
+
+### ما أثبته السجل والـartifact
+- التشغيل #161 على commit `546c0a2e3e338acde47104e914f6003fd79b7def` لم يفشل في ترجمة التطبيق أو اختبارات JVM؛ كلاهما اجتاز.
+- ترجمة Android instrumentation أيضاً اجتازت، بما فيها ملف `PersistentTelegramSessionHostAndroidTest`.
+- فشل التشغيل عند `:app:connectedDebugAndroidTest`. تقرير XML/HTML من artifact `android-test-reports` رقم `15045732812` يبيّن 8 اختبارات، ونجاح 7، وفشل `ThemesSettingsNavigationAndroidTest.themesSettingsPageOpensWithoutNestedScrollCrash` وحده بعد 52.510 ثانية.
+- لا يحتوي Logcat الاختبار على `FATAL EXCEPTION` أو stack trace من التطبيق؛ بدأ اختبار الثيم، ثم اختفى جهاز `emulator-5554` وأبلغ ADB `device not found`. لذلك لم يكن الفشل خطأ Kotlin أو خطأ مطابقة peer؛ بل انتهى اختبار واجهة بعد فترة انتظار طويلة مع فقد جهاز المحاكاة، ولم يُنتج الجهاز رسالة assertion قابلة للقراءة.
+- لم يصل التشغيل إلى تنفيذ `PersistentTelegramSessionHostAndroidTest`؛ التقرير لا يحتوي نتيجة لهذا الصف.
+
+### الإصلاحات المباشرة
+- أصبح اختبار الثيم ينفذ `performScrollTo()` قبل النقر على بطاقة «الثيمات والمؤثرات»، وقبل التحقق من ظهور كل خيار داخل صفحة الثيمات. البطاقة في شاشة Settings تقع ضمن عمود قابل للتمرير، ولا ينبغي الاعتماد على النقر على عنصر خارج إطار العرض.
+- أصبح اختبار WebView الدائم يعطل تحميل Telegram الشبكي في بيئة CI فقط (`loadTelegramOnCreate = false`). الاختبار يقيس هوية WebView وثبات الـparent و`isAttachedToWindow`، ولا يحتاج إلى فتح Telegram أو الاتصال بالإنترنت. يظل تحميل Telegram مفعلاً افتراضياً في التطبيق.
+- صححنا مطابقة الوجهة: مسار Telegram المباشر `#@username` يقبل البوت رغم اختلاف friendly label عن اسم العرض، أما المسار الرقمي المحلول فيتطلب `chatTitle` صريحاً مطابقاً. إذا أدخل المستخدم عنوان محادثة في الإعدادات يجب مطابقته؛ وإذا لم يُدخل عنواناً فلا نقبل مساراً رقمياً غير قابل للتحقق من username.
+- لم تتغير هوية التطبيق أو مفتاح التوقيع أو بيانات WebView، ولم تتم إضافة أي خطوة تمسح Cookies أو Local Storage أو IndexedDB.
+
+### الملفات المعدلة
+- `app/src/androidTest/java/com/cyberphantom/osintworkbench/ui/ThemesSettingsNavigationAndroidTest.kt`
+- `app/src/main/java/com/cyberphantom/osintworkbench/ui/telegram/TelegramWeb.kt`
+- `app/src/main/java/com/cyberphantom/osintworkbench/ui/telegram/TelegramSessionController.kt`
+- `app/src/androidTest/java/com/cyberphantom/osintworkbench/ui/telegram/PersistentTelegramSessionHostAndroidTest.kt`
+- `app/src/androidTest/java/com/cyberphantom/osintworkbench/domain/MultiSourceNewsEngineAndroidTest.kt`
+
+### الحالة
+- لا يُعلن نجاح البناء بعد. يجب أن يعيد CI تشغيل اختبارات JVM وAndroid instrumentation، وأن يظهر تنفيذ اختبار المضيف الدائم واختبار الثيم في التقرير، ثم ينتقل إلى توقيع APK ورفعه. هذا التشخيص يستند إلى artifact #161 لا إلى تخمين.

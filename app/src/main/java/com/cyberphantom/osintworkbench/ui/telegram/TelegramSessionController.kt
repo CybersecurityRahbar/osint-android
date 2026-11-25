@@ -155,7 +155,7 @@ class TelegramSessionController(
             }
 
             runStage(requestId, TelegramSearchStage.OPEN_TARGET, onUpdate) {
-                driver.openTarget(bot.username, bot.chatTitle.ifBlank { bot.name })
+                driver.openTarget(bot.username, bot.chatTitle)
             }
 
             val peer = runStage(requestId, TelegramSearchStage.VERIFY_PEER, onUpdate) {
@@ -166,7 +166,7 @@ class TelegramSessionController(
                     if (TelegramPeerMatcher.isTargetIdentity(
                             current,
                             bot.username,
-                            bot.chatTitle.ifBlank { bot.name }
+                            bot.chatTitle
                         )
                     ) current else null
                 } ?: throw IllegalStateException(
@@ -180,7 +180,7 @@ class TelegramSessionController(
                     if (!TelegramPeerMatcher.isTargetIdentity(
                             current,
                             bot.username,
-                            bot.chatTitle.ifBlank { bot.name }
+                            bot.chatTitle
                         )
                     ) {
                         throw IllegalStateException("تغيرت المحادثة أثناء التحقق؛ أوقفت العملية قبل الإرسال.")
@@ -307,7 +307,7 @@ class TelegramSessionController(
         if (!TelegramPeerMatcher.chatMatches(
                 snapshot,
                 bot.username,
-                bot.chatTitle.ifBlank { bot.name }
+                bot.chatTitle
             )
         ) {
             throw IllegalStateException(
@@ -407,10 +407,16 @@ object TelegramPeerMatcher {
         val numericPeerRoute = route.matches(Regex("\\d{5,20}"))
         if (!directHandleRoute && !numericPeerRoute) return false
 
-        // Telegram can update the URL hash before the chat DOM is hydrated. Requiring
-        // the configured visible title for both route forms prevents a stale previous
-        // chat from being mistaken for the requested bot during that transition.
-        return titleMatches(snapshot.title, configuredTitle)
+        // A direct #@username route identifies the selected public peer even when
+        // the friendly source label differs from Telegram's actual display title.
+        // An explicit chatTitle remains an additional verification requirement.
+        // A resolved numeric route is accepted only with that explicit title because
+        // the URL no longer exposes the username.
+        return when {
+            configuredTitle.isNotBlank() -> titleMatches(snapshot.title, configuredTitle)
+            directHandleRoute -> true
+            else -> false
+        }
     }
 
     fun chatMatches(
