@@ -2,7 +2,7 @@ package com.cyberphantom.osintworkbench.domain
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.cyberphantom.osintworkbench.ui.telegram.TelegramSnapshot
-import com.cyberphantom.osintworkbench.ui.telegram.TelegramWeb
+import com.cyberphantom.osintworkbench.ui.telegram.TelegramPeerMatcher
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -77,7 +77,7 @@ class MultiSourceNewsEngineAndroidTest {
     }
 
     @Test
-    fun directUsernameRouteAcceptsAChatTitleDifferentFromTheFriendlySourceLabel() {
+    fun directUsernameRouteUsesTheConfiguredVisibleChatTitle() {
         val snapshot = TelegramSnapshot(
             url = "https://web.telegram.org/k/#@tellwhoobot",
             title = "Tell Whoo",
@@ -85,9 +85,15 @@ class MultiSourceNewsEngineAndroidTest {
             hasSendButton = true,
             editorText = "",
             readyState = "complete",
-            messages = emptyList()
+            messages = emptyList(),
+            peerRoute = "@tellwhoobot",
+            isAuthenticated = true,
+            hasAppShell = true
         )
-        assertTrue(TelegramWeb.chatMatches(snapshot, "tellwhoobot", "كاشف الأرقام"))
+        // The source's friendly label may differ from Telegram's real chat title.
+        // The explicit chatTitle field must hold the visible title to pass peer verification.
+        assertTrue(TelegramPeerMatcher.chatMatches(snapshot, "tellwhoobot", "Tell Whoo"))
+        assertTrue(!TelegramPeerMatcher.chatMatches(snapshot, "tellwhoobot", "كاشف الأرقام"))
     }
 
     @Test
@@ -99,10 +105,13 @@ class MultiSourceNewsEngineAndroidTest {
             hasSendButton = true,
             editorText = "",
             readyState = "complete",
-            messages = emptyList()
+            messages = emptyList(),
+            peerRoute = "123456789",
+            isAuthenticated = true,
+            hasAppShell = true
         )
-        assertTrue(TelegramWeb.chatMatches(snapshot, "tellwhoobot", "Tell Whoo"))
-        assertTrue(!TelegramWeb.chatMatches(snapshot, "tellwhoobot", "كاشف الأرقام"))
+        assertTrue(TelegramPeerMatcher.chatMatches(snapshot, "tellwhoobot", "Tell Whoo"))
+        assertTrue(!TelegramPeerMatcher.chatMatches(snapshot, "tellwhoobot", "كاشف الأرقام"))
     }
 
 }
