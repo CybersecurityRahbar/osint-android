@@ -2120,3 +2120,14 @@
 - رفع النسخة إلى `0.12.1` و`versionCode 19` مع الحفاظ على application ID ومفتاح التوقيع الثابتين كي يكون التحديث فوق النسخة الحالية دون حذف البيانات.
 - لا يُعلن نجاح v0.12.1 قبل اجتياز CI ورفع APK ثابت التوقيع ثم تجربة Telegram الحقيقية على الهاتف. لا توجد أي خطوة لمسح بيانات الجلسة أو تسجيل الخروج.
 
+
+
+## 2026-11-25 — تشخيص فشل CI رقم #164 وتعديل بيئة محاكي Android
+
+- الـcommit الجاري اختباره: `0e2b27c66d571069c0a69d85f0440ac9620d850a` (v0.12.1 / versionCode 19).
+- اختبارات JVM نجحت. تجميع التطبيق واختبارات Android نجحا حتى مرحلة تشغيل المحاكي؛ لا توجد أخطاء Kotlin أو Android-test compilation.
+- اختبار Android الذي ظهر فاشلاً هو `ThemesSettingsNavigationAndroidTest.themesSettingsPageOpensWithoutNestedScrollCrash` بعد 30.463 ثانية، لكن XML/HTML لا يحتوي رسالة Assertion أو stack trace؛ خانة failure فارغة.
+- سجل CI يوضح أن ADB أصبح `device offline` عدة مرات أثناء إقلاع المحاكي، ثم فشل Gradle في إزالة حزم الاختبار بسبب `adb: device offline`. لم يظهر `FATAL EXCEPTION` لتطبيقنا أو ANR في Logcat. لذلك الدليل الأقوى هو انقطاع محاكي CI نفسه، لا خطأ مثبت في واجهة الثيمات أو كود Telegram.
+- لم يُنتج هذا التشغيل APK؛ خطوات التوقيع والبناء والرفع تم تخطيها لأن اختبار Android فشل. لا يجوز توزيع هذا commit كنسخة اختبار حتى ينجح التشغيل التالي.
+- لتخفيف العبء وعدم الحاجة إلى Google Play services في هذه الاختبارات، غُيّر Android emulator runner من صورة `google_apis` إلى صورة AOSP `default` مع تعطيل snapshot عبر `-no-snapshot`. الاختبارات الحالية لا تستخدم Google Play services. الهدف تقليل أعطال صورة المحاكي وإعادة الاختبار على بيئة أبسط.
+- لا تزال نتيجة Telegram الحقيقية على هاتف المستخدم غير مختبرة؛ نجاح JVM لا يثبت أن مؤشرات DOM تتوافق مع جلسة Telegram الخاصة به. بعد نجاح CI وصدور APK يجب فحص قسم SAFE DIAGNOSTICS إذا استمر `CHECK_SESSION` timeout.
