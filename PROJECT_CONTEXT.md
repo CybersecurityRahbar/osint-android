@@ -1974,3 +1974,54 @@
 - تمت مراجعة المستودع وملفات المسار الحالي وتاريخ تحليل فشل المصادر الخاصة، وإعداد خطة إعادة بناء مرحلية.
 - لم يتم تعديل شيفرة التطبيق أو إعدادات الجلسة أو قاعدة البيانات، ولم يتم حذف أو تصفير Cookies/Local Storage، ولم يُرسل أي طلب إلى أي بوت.
 - التغيير في هذا الالتزام هو إضافة هذا السجل إلى `PROJECT_CONTEXT.md` فقط. يبدأ التنفيذ البرمجي بعد اعتماد اتجاه العمل؛ وتبقى الأولوية إثبات السبب في جلسة الهاتف الحالية بدلاً من كتابة أتمتة DOM جديدة غير مقاسة.
+
+## 2026-11-25 — إعادة بناء المصادر الخاصة عبر جلسة Telegram المحفوظة (Preview v0.12.0)
+
+### توضيح المستخدم الحاسم حول المصادقة واستمرارية الجلسة
+- أكد المستخدم أن Telegram Web داخل التطبيق يفتح مباشرةً على الحساب المسجل دخوله، وأنه يتصفح المحادثات دون شاشة تسجيل دخول.
+- أوضح أن الجلسة استمرت بعد عدة تحديثات للتطبيق بفضل application ID ومفتاح التوقيع الموحدين. هذا السلوك يجب أن يبقى كما هو.
+- لذلك لم ننشئ حساباً/جلسة جديدة، ولم نضف TDLib أو Bot API أو نافذة QR، ولم نطلب رقم هاتف أو رمز تحقق، ولم نمسح Cookies أو Local Storage أو IndexedDB أو WebView cache.
+- بقي application ID للـPreview هو `com.cyberphantom.osintworkbench.preview051` مع مفتاح التوقيع والـalias الثابت `osint-preview`. تمت ترقية versionCode من 17 إلى 18 وversionName من 0.11.3 إلى 0.12.0 للسماح بتحديث داخل التطبيق نفسه.
+
+### ما تغير في بنية الجلسة
+- نُقل امتلاك WebView إلى مضيف دائم في `PrivateSessionHost` يُركّب كـAndroidView واحد في جذر `WorkbenchApp`.
+- WebView واحدة فقط تحتفظ بنفس بيانات موقع Telegram، وتظل ابناً لمضيف FrameLayout متصل بشجرة Android أثناء إظهار شاشات التطبيق. تُغطّى بطبقة التطبيق عندما تكون مخفية، ولا تُنقل بين Dialogs ولا يُعاد إنشاؤها عند فتح/إغلاق الإعدادات.
+- أصبحت صفحة إعداد الجلسة في `PrivateSessionView.kt` مجرد زر يكشف/يخفي WebView الموجودة بالفعل؛ لا يوجد Dialog أو AndroidView آخر للجلسة.
+- عند فتح Telegram يظهر شريط أعلى الصفحة للعودة إلى واجهة التطبيق. تبقى شاشات التطبيق مركبة خارج مجال العرض كي لا تفقد حالة النماذج والبحث عند الرجوع.
+- تتم إدارة دورة حياة النشاط عبر `MainActivity` الموجودة سابقاً؛ لا تغيير على اسم الحزمة أو هوية توقيع Preview.
+
+### المحرك الجديد وآلة الحالات
+- أُضيف `TelegramSessionController.kt` كمكوّن مستقل عن Compose، بينما أصبحت `PrivateSearchPanel.kt` واجهة للطلب والتقدم والإلغاء والنتيجة فقط.
+- يستخدم المحرك `Mutex.tryLock()` لمنع عمليتين من التحكم في WebView نفسها في الوقت نفسه.
+- تسلسل الحالات المنفذ: `CHECK_SESSION → OPEN_TARGET → VERIFY_PEER → VERIFY_COMPOSER → SEND_COMMAND (عند الحاجة) → WAIT_COMMAND_ECHO → WAIT_PROMPT (عند الحاجة) → SEND_VALUE → WAIT_VALUE_ECHO → COLLECT_REPLY → PRESENT_RESULT`.
+- أُضيفت حدود زمنية مستقلة للمراحل، وأصبح بإمكان المستخدم إلغاء الطلب. لا ينتقل المحرك من خطوة إرسال إلى الخطوة التالية إلا بعد رصد الرسالة الصادرة الجديدة في المحادثة نفسها.
+- إذا كان تأكيد الإرسال غامضاً أو لم يظهر صدى الرسالة، يتوقف الطلب ولا يعيد إرسال الأمر أو القيمة تلقائياً. وتُمنع المتابعة إذا تغيرت هوية المحادثة أو لم يثبت تطابقها مع اسم البوت / العنوان المضبوط.
+- ما زالت أنماط المصادر الثلاثة مدعومة لكل من الرقم والاسم: `COMMAND_AND_PROMPT`, `COMMAND_THEN_VALUE`, `VALUE_ONLY`. ويظل اختيار الأمر والمطالبة من `PrivateSourcesStore` الحالي دون فقد إعدادات المستخدم.
+- يُحلل الرد الجديد إلى عدة رسائل. تحفظ كل رسالة مفتاحها واتجاهها ونصها/تعليقها ونوع الوسيط ومؤشرات وجود inline buttons. يعرض التطبيق مؤشرات صريحة للصور والفيديو والصوت والملفات والأزرار؛ لا يدّعي تحويل محتوى الوسائط إلى نص حين لا يقدّم DOM نصاً لها.
+- أصبح حفظ ردود المصادر الخاصة مغلقاً افتراضياً لأن SQLite المحلية غير مشفرة عند السكون وفق تدقيق السياق السابق، ولا يتم الحفظ إلا عند تفعيل المستخدم الخيار صراحةً.
+
+### التعامل مع الإرسال وبيانات الجلسة
+- تم حذف fallback الذي كان يعيّن `editor.textContent` ويصطنع `KeyboardEvent` لـEnter. أصبح الإدخال يمر عبر `execCommand('insertText')` لحقل contentEditable أو setter الأصلي لحقل النص مع أحداث input/change، ثم ينقر زر الإرسال المحدد داخل منطقة المحرر فقط.
+- استدعاء زر الإرسال لا يُعامل كدليل تسليم؛ ينتظر المحرك ظهور outgoing message جديدة مطابقة للنص داخل peer المتحقق منه.
+- تمت إضافة مؤشرات WebView للشبكة وأخطاء JavaScript، مع تسجيل أرقام الأخطاء / أسطر Console فقط وليس محتوى الصفحة أو قيمة البحث أو بيانات الجلسة.
+- شارة «الجلسة جاهزة» السابقة لم تعد تعتمد على وجود WebView object فقط؛ يتحقق المحرك من صفحة Telegram وحالة المصادقة على قدر ما تسمح به إشارات DOM الحالية.
+
+### الاختبارات والتحقق
+- أضيف `TelegramSessionControllerTest.kt` باختبارات fake-driver تغطي التدفقات الثلاثة، البحث بالاسم واختياره للأمر الصحيح، رفض الجلسة غير المصادق عليها، التحقق من عنوان الـpeer الرقمي، عدم إعادة الإرسال عند غموض تأكيد الأمر/القيمة، توقف التدفق عند غياب المطالبة، منع التزامن، الإلغاء، وتمثيل الوسائط والأزرار.
+- تم تشغيل 12 اختبار تحكم معزول محلياً باستخدام Kotlin/JVM وcoroutines وواجهات fake للمكونات Android-specific؛ جميعها اجتازت: `12 tests passed`. هذا اختبار لمنطق Controller فقط وليس اتصالاً حياً بخوادم Telegram.
+- أضيف `PersistentTelegramSessionHostAndroidTest.kt` لاختبار Android instrumentation: يثبت بقاء هوية WebView وparent نفسه و`isAttachedToWindow` عبر الإخفاء والإظهار.
+- لم نرسل استعلاماً حقيقياً إلى أي بوت من حساب المستخدم، ولم ننفذ اختباراً حياً على جلسة Telegram الخاصة به أثناء تعديل الكود. لذلك نجاح CI وبناء APK لا يثبت بعد أن Telegram Web الحالي سيقبل selectors والإرسال على الهاتف؛ يلزم فحصه ميدانياً على الجهاز مع إبقاء الجلسة المحفوظة.
+
+### الملفات المحدثة
+- `app/src/main/java/com/cyberphantom/osintworkbench/ui/telegram/TelegramWeb.kt`
+- `app/src/main/java/com/cyberphantom/osintworkbench/ui/telegram/TelegramSessionController.kt` (جديد)
+- `app/src/main/java/com/cyberphantom/osintworkbench/ui/telegram/PrivateSearchPanel.kt`
+- `app/src/main/java/com/cyberphantom/osintworkbench/ui/telegram/PrivateSessionView.kt`
+- `app/src/main/java/com/cyberphantom/osintworkbench/ui/AppShell.kt`
+- `app/src/test/java/com/cyberphantom/osintworkbench/ui/telegram/TelegramSessionControllerTest.kt` (جديد)
+- `app/src/androidTest/java/com/cyberphantom/osintworkbench/ui/telegram/PersistentTelegramSessionHostAndroidTest.kt` (جديد)
+- `.github/workflows/android.yml`, `app/build.gradle.kts`, `README.md`
+
+### حالة الجولة
+- هذه الجولة تغيّر الكود فعلياً إلى التصميم الجديد وتجهز Preview v0.12.0 بتوقيع التحديث الثابت نفسه.
+- لا تُعد المهمة ناجحة نهائياً حتى ينجح CI في تجميع Kotlin والاختبارات وAndroid instrumentation ورفع APK ثابت التوقيع، ثم يجري المستخدم اختبار جلسة Telegram الحقيقية على هاتفه. لا حاجة إلى حذف التطبيق أو مسح بياناته أو تسجيل الخروج.

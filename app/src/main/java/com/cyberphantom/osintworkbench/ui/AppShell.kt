@@ -12,6 +12,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -36,6 +38,9 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.zIndex
+import android.widget.FrameLayout
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
@@ -50,6 +55,7 @@ import com.cyberphantom.osintworkbench.data.LocalStore
 import com.cyberphantom.osintworkbench.data.RelationRow
 import com.cyberphantom.osintworkbench.data.StoreStats
 import com.cyberphantom.osintworkbench.ui.design.Hairline
+import com.cyberphantom.osintworkbench.ui.design.GhostButton
 import com.cyberphantom.osintworkbench.ui.design.IntelColors
 import com.cyberphantom.osintworkbench.ui.design.MicroLabel
 import com.cyberphantom.osintworkbench.ui.design.NeonAtmosphereBackground
@@ -61,6 +67,7 @@ import com.cyberphantom.osintworkbench.ui.screens.NetworkScreen
 import com.cyberphantom.osintworkbench.ui.screens.ReconScreen
 import com.cyberphantom.osintworkbench.ui.screens.ResearchScreen
 import com.cyberphantom.osintworkbench.ui.screens.SettingsScreen
+import com.cyberphantom.osintworkbench.ui.telegram.PrivateSessionHost
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -110,61 +117,121 @@ fun WorkbenchApp() {
     }
 
     LaunchedEffect(Unit) { refresh() }
+    val sessionVisible by PrivateSessionHost.sessionVisible
 
     Box(Modifier.fillMaxSize().background(IntelColors.Base)) {
-        if (WorkbenchThemeState.theme == WorkbenchVisualTheme.NEON && WorkbenchThemeState.motionEnabled) {
-            NeonAtmosphereBackground(Modifier.fillMaxSize())
+        // One permanent WebView host. The exact SessionWebView instance remains attached
+        // while the opaque workbench surface is shown above it.
+        AndroidView(
+            modifier = Modifier.fillMaxSize().safeDrawingPadding(),
+            factory = { context ->
+                FrameLayout(context).apply {
+                    setBackgroundColor(android.graphics.Color.TRANSPARENT)
+                    PrivateSessionHost.mountRoot(this)
+                }
+            },
+            update = { container -> PrivateSessionHost.mountRoot(container) }
+        )
+
+        if (!sessionVisible) {
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .background(IntelColors.Base)
+                    .clickable { }
+            )
+            if (WorkbenchThemeState.theme == WorkbenchVisualTheme.NEON && WorkbenchThemeState.motionEnabled) {
+                NeonAtmosphereBackground(Modifier.fillMaxSize())
+            }
         }
+
+        // Keep the existing app screens composed so their form/search state survives
+        // while Telegram is temporarily shown above the same persistent WebView.
         Column(
             Modifier
                 .fillMaxSize()
                 .safeDrawingPadding()
+                .offset(x = if (sessionVisible) 1200.dp else 0.dp)
+                .zIndex(2f)
         ) {
-        OpsHeader(activeTab = tab, onOpenSettings = { tab = WorkbenchTab.SETTINGS })
-        Box(Modifier.weight(1f).fillMaxWidth()) {
-            when (tab) {
-                WorkbenchTab.HOME -> HomeScreen(
-                    stats = stats,
-                    findings = findings,
-                    cases = cases,
-                    onRecon = { target ->
-                        reconSeed = target
-                        tab = WorkbenchTab.RECON
-                    },
-                    onResearch = { query, news ->
-                        researchSeed = query
-                        researchNews = news
-                        tab = WorkbenchTab.RESEARCH
-                    },
-                    onOpenTab = { tab = it }
-                )
-                WorkbenchTab.RECON -> ReconScreen(
-                    store = store,
-                    initialTarget = reconSeed,
-                    onSaved = { refresh() }
-                )
-                WorkbenchTab.NETWORK -> NetworkScreen(entities = entities, relations = relations)
-                WorkbenchTab.CASES -> CasesScreen(
-                    cases = cases,
-                    store = store,
-                    onSaved = { refresh() }
-                )
-                WorkbenchTab.RESEARCH -> ResearchScreen(
-                    store = store,
-                    initialQuery = researchSeed,
-                    startInNews = researchNews,
-                    onSaved = { refresh() },
-                    onOpenSettings = { tab = WorkbenchTab.SETTINGS }
-                )
-                WorkbenchTab.SETTINGS -> SettingsScreen(
-                    stats = stats,
-                    store = store,
-                    dataVersion = dataVersion,
-                    onDataChanged = { refresh() }
-                )
+            OpsHeader(activeTab = tab, onOpenSettings = { tab = WorkbenchTab.SETTINGS })
+            Box(Modifier.weight(1f).fillMaxWidth()) {
+                when (tab) {
+                    WorkbenchTab.HOME -> HomeScreen(
+                        stats = stats,
+                        findings = findings,
+                        cases = cases,
+                        onRecon = { target ->
+                            reconSeed = target
+                            tab = WorkbenchTab.RECON
+                        },
+                        onResearch = { query, news ->
+                            researchSeed = query
+                            researchNews = news
+                            tab = WorkbenchTab.RESEARCH
+                        },
+                        onOpenTab = { tab = it }
+                    )
+                    WorkbenchTab.RECON -> ReconScreen(
+                        store = store,
+                        initialTarget = reconSeed,
+                        onSaved = { refresh() }
+                    )
+                    WorkbenchTab.NETWORK -> NetworkScreen(entities = entities, relations = relations)
+                    WorkbenchTab.CASES -> CasesScreen(
+                        cases = cases,
+                        store = store,
+                        onSaved = { refresh() }
+                    )
+                    WorkbenchTab.RESEARCH -> ResearchScreen(
+                        store = store,
+                        initialQuery = researchSeed,
+                        startInNews = researchNews,
+                        onSaved = { refresh() },
+                        onOpenSettings = { tab = WorkbenchTab.SETTINGS }
+                    )
+                    WorkbenchTab.SETTINGS -> SettingsScreen(
+                        stats = stats,
+                        store = store,
+                        dataVersion = dataVersion,
+                        onDataChanged = { refresh() }
+                    )
+                }
             }
+            BottomRail(selected = tab, onSelect = { WorkbenchThemeState.tap(null); tab = it })
         }
-        BottomRail(selected = tab, onSelect = { WorkbenchThemeState.tap(null); tab = it })
+
+        if (sessionVisible) {
+            TelegramSessionTopBar(Modifier.align(Alignment.TopCenter).zIndex(5f))
+        }
+    }
+}
+
+@Composable
+private fun TelegramSessionTopBar(modifier: Modifier = Modifier) {
+    Surface(
+        modifier = modifier.fillMaxWidth().statusBarsPadding(),
+        color = IntelColors.Void.copy(alpha = 0.96f)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(
+                    "جلسة Telegram الحالية",
+                    color = IntelColors.Text,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 11.sp
+                )
+                MicroLabel("SAME SAVED SESSION · CLOSE TO RETURN", IntelColors.Signal)
+            }
+            Spacer(Modifier.weight(1f))
+            GhostButton(
+                text = "العودة للتطبيق",
+                onClick = { PrivateSessionHost.hideSession() },
+                accent = IntelColors.Signal
+            )
         }
     }
 }

@@ -1,22 +1,19 @@
 package com.cyberphantom.osintworkbench.ui.telegram
 
-import android.webkit.WebView
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.BugReport
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material3.Icon
@@ -35,18 +32,15 @@ import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.cyberphantom.osintworkbench.data.LocalStore
 import com.cyberphantom.osintworkbench.data.PrivateSourceBot
 import com.cyberphantom.osintworkbench.data.PrivateSourceKind
-import com.cyberphantom.osintworkbench.data.PrivateSourceFlow
 import com.cyberphantom.osintworkbench.data.PrivateSourcesStore
 import com.cyberphantom.osintworkbench.ui.design.ActionButton
 import com.cyberphantom.osintworkbench.ui.design.DataText
 import com.cyberphantom.osintworkbench.ui.design.GhostButton
-import com.cyberphantom.osintworkbench.ui.design.Hairline
 import com.cyberphantom.osintworkbench.ui.design.IntelColors
 import com.cyberphantom.osintworkbench.ui.design.IntelField
 import com.cyberphantom.osintworkbench.ui.design.IntelPanel
@@ -59,177 +53,142 @@ import com.cyberphantom.osintworkbench.ui.design.ToggleRow
 import com.cyberphantom.osintworkbench.ui.util.formatClock
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.util.Locale
 
 @Composable
-fun PrivateSearchPanel(store: LocalStore, onSaved: () -> Unit, onOpenSettings: () -> Unit) {
+fun PrivateSearchPanel(
+    store: LocalStore,
+    onSaved: () -> Unit,
+    onOpenSettings: () -> Unit
+) {
     val context = LocalContext.current
     val clipboard = LocalClipboardManager.current
-    val configStore = remember { PrivateSourcesStore(context) }
+    val configStore = remember(context) { PrivateSourcesStore(context) }
     var bots by remember { mutableStateOf(configStore.loadBots()) }
-    var selectedBotId by rememberSaveable { mutableStateOf<String?>(bots.firstOrNull()?.id) }
+    var selectedBotId by rememberSaveable { mutableStateOf(bots.firstOrNull()?.id) }
     var query by rememberSaveable { mutableStateOf("") }
     var kind by rememberSaveable { mutableStateOf(PrivateSourceKind.NUMBER) }
-    var saveReplies by rememberSaveable { mutableStateOf(true) }
+    var saveReplies by rememberSaveable { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
-    var status by remember { mutableStateOf("أدخل القيمة ثم شغّل الطلب؛ سيتابع المصدر المختار ويجمع الاستجابة.") }
-    var result by remember { mutableStateOf<String?>(null) }
+    var activeJob by remember { mutableStateOf<Job?>(null) }
+    var status by remember {
+        mutableStateOf("أدخل قيمة واحدة. سيتحقق المحرك من جلسة Telegram والوجهة قبل تنفيذ أي إرسال.")
+    }
+    var result by remember { mutableStateOf<TelegramSearchResult?>(null) }
     var log by remember { mutableStateOf(emptyList<String>()) }
     var diagnostics by remember { mutableStateOf<String?>(null) }
+    var currentStage by remember { mutableStateOf<TelegramSearchStage?>(null) }
     val webView by PrivateSessionHost.sessionView
     val scope = rememberCoroutineScope()
+    val controller = remember { TelegramSessionRuntime.controller }
     val selectedBot = bots.firstOrNull { it.id == selectedBotId }
 
     LaunchedEffect(bots) {
-        if (bots.none { it.id == selectedBotId }) selectedBotId = bots.firstOrNull()?.id
+        if (bots.none { it.id == selectedBotId }) {
+            selectedBotId = bots.firstOrNull()?.id
+        }
     }
 
     fun addLog(message: String) {
         val stamp = formatClock(System.currentTimeMillis())
-        log = (log + "$stamp  $message").takeLast(14)
+        log = (log + "$stamp  $message").takeLast(18)
     }
 
-    fun start() {
+    fun beginSearch() {
         val bot = selectedBot ?: return
-        val view = webView
-        if (view == null) {
-            status = "لم تُهيأ جلسة المصدر بعد. افتح نافذة الجلسة من الإعدادات أولاً."
-            return
-        }
-        if (query.isBlank()) {
-            status = "أدخل القيمة المطلوبة أولاً."
-            return
-        }
-
-        val flow = bot.flow(kind)
-        val command = bot.command(kind).trim()
-        if (flow != PrivateSourceFlow.VALUE_ONLY && command.isBlank()) {
-            status = "هذا النمط يحتاج إلى أمر لهذه القيمة. عدّل إعداد المصدر أو اختر «قيمة فقط»."
-            return
-        }
-
         val value = query.trim()
-        val searchKind = kind
+        if (webView == null) {
+            status = "مضيف جلسة Telegram غير جاهز بعد. لم يُطلب تسجيل دخول جديد."
+            return
+        }
+        if (value.isBlank()) {
+            status = "أدخل قيمة البحث أولاً."
+            return
+        }
+        if (busy) return
+
         busy = true
         result = null
         diagnostics = null
+        currentStage = null
         log = emptyList()
-        scope.launch {
+        status = "تهيئة الطلب والتحقق من الجلسة المحفوظة…"
+
+        activeJob = scope.launch {
             try {
-                withContext(Dispatchers.Main) { view.onResume() }
-                addLog("المصدر المحدد: ${bot.name}")
-                val opened = TelegramWeb.openChat(
-                    view,
-                    bot.username,
-                    bot.chatTitle.ifBlank { bot.name }
-                ) { addLog(it) }
-                addLog("تم التحقق من نافذة المصدر وحقل الإدخال: ${opened.title}.")
+                addLog("بدأ طلب واحد للمصدر المحدد؛ لن تُسجّل قيمة البحث في سجل الخطوات.")
+                val completed = controller.search(
+                    TelegramSearchRequest(
+                        bot = bot,
+                        kind = kind,
+                        value = value
+                    )
+                ) { update ->
+                    currentStage = update.stage
+                    status = update.message
+                    addLog("${update.stage.name}: ${update.message}")
+                }
 
-                var promptText: String? = null
-                if (flow != PrivateSourceFlow.VALUE_ONLY) {
-                    val beforeCommand = TelegramWeb.snapshot(view).messages.map { it.key }.toSet()
-                    addLog("إرسال أمر المصدر.")
-                    val commandSent = TelegramWeb.send(view, command)
-                    addLog("تم إرسال الأمر عبر ${commandSent.via}.")
-                    val commandEcho = TelegramWeb.waitFor(view, 20_000L) { snapshot ->
-                        snapshot.messages.any {
-                            it.outgoing && it.text.trim() == command && it.key !in beforeCommand
-                        }
-                    }
-                    if (commandEcho == null) {
-                        throw IllegalStateException("لم يظهر تأكيد الأمر في سجل الرسائل؛ لم نرسل القيمة.")
-                    }
-
-                    if (flow == PrivateSourceFlow.COMMAND_AND_PROMPT) {
-                        val promptBaseline = TelegramWeb.snapshot(view).messages.map { it.key }.toSet()
-                        addLog("انتظار مطالبة المصدر بالقيمة…")
-                        val prompt = TelegramWeb.waitFor(view, 35_000L) { snapshot ->
-                            snapshot.messages.any { message ->
-                                !message.outgoing &&
-                                    message.key !in promptBaseline &&
-                                    TelegramWeb.looksLikePrompt(message.text, searchKind, bot.prompt(searchKind))
-                            }
-                        }
-                        if (prompt == null) {
-                            throw IllegalStateException(
-                                "لم تصل مطالبة مطابقة خلال المهلة. راجع نص المطالبة أو غيّر النمط إلى «أمر + قيمة» إذا كان المصدر لا يطلب القيمة منفصلة."
+                result = completed
+                status = when {
+                    completed.hasMedia ->
+                        "وصل الرد. يحتوي على نص و/أو وسائط أو أزرار؛ راجع نوع كل رسالة أدناه."
+                    else -> "اكتمل البحث ووصل رد جديد من ${completed.sourceName}."
+                }
+                addLog("اكتمل الطلب: ${completed.messageCount} رسالة جديدة.")
+                if (saveReplies) {
+                    runCatching {
+                        val detail = completed.displayText
+                        withContext(Dispatchers.IO) {
+                            val node = store.upsertEntity(
+                                value = value,
+                                kind = "PRIVATE_SOURCE_LOOKUP@" + bot.id,
+                                source = "مصدر خاص · ${bot.name}",
+                                confidence = 55
+                            )
+                            store.addFinding(
+                                entityId = node,
+                                title = "رد ${bot.name}",
+                                detail = detail,
+                                source = "مصدر خاص · ${bot.name}",
+                                severity = "info"
                             )
                         }
-                        promptText = prompt.messages.lastOrNull {
-                            !it.outgoing && it.key !in promptBaseline
-                        }?.text
-                        addLog("تم التعرف على مطالبة المصدر.")
-                    } else {
-                        addLog("النمط المحدد: أمر ثم قيمة؛ لا توجد خطوة مطالبة.")
-                        delay(700L)
+                        onSaved()
+                    }.onFailure { saveError ->
+                        addLog("وصل الرد لكن تعذر حفظه: ${saveError.message ?: "خطأ تخزين"}.")
                     }
-                } else {
-                    addLog("النمط المحدد: إرسال القيمة فقط دون أمر.")
-                }
-
-                val beforeValue = TelegramWeb.snapshot(view).messages.map { it.key }.toSet()
-                addLog("إرسال القيمة.")
-                val valueSent = TelegramWeb.send(view, value)
-                addLog("تم إرسال القيمة عبر ${valueSent.via}.")
-                val valueEcho = TelegramWeb.waitFor(view, 20_000L) { snapshot ->
-                    snapshot.messages.any {
-                        it.outgoing && it.text.trim() == value && it.key !in beforeValue
-                    }
-                }
-                if (valueEcho == null) {
-                    throw IllegalStateException("لم يظهر تأكيد إرسال القيمة في سجل الرسائل؛ لم ننسب أي رد إلى هذا الطلب.")
-                }
-
-                addLog("جمع استجابة المصدر…")
-                val reply = collectReply(view, beforeValue, promptText)
-                if (reply.isBlank()) {
-                    diagnostics = runCatching { TelegramWeb.diagnostics(view) }
-                        .getOrNull()?.summary()?.replace("web.telegram.org", "جلسة المصدر")
-                    throw IllegalStateException("لم تصل استجابة نصية خلال 90 ثانية. قد تكون النتيجة وسائط أو أن المصدر لم يرد. راجع التشخيص.")
-                }
-
-                result = reply
-                status = "اكتمل الطلب. النتيجة من ${bot.name}."
-                addLog("تم جمع ${reply.length} حرفاً.")
-                if (saveReplies) {
-                    withContext(Dispatchers.IO) {
-                        val node = store.upsertEntity(
-                            value = value,
-                            kind = "PRIVATE_SOURCE_LOOKUP@" + bot.id,
-                            source = "مصدر خاص · ${bot.name}",
-                            confidence = 55
-                        )
-                        store.addFinding(
-                            entityId = node,
-                            title = "رد ${bot.name}",
-                            detail = reply,
-                            source = "مصدر خاص · ${bot.name}",
-                            severity = "info"
-                        )
-                    }
-                    onSaved()
                 }
             } catch (cancelled: CancellationException) {
+                status = "أُلغي الطلب. لم يُعد المحرك إرسال الأمر أو القيمة تلقائياً."
+                addLog("أُلغي التنفيذ بناءً على طلب المستخدم.")
                 throw cancelled
             } catch (error: Exception) {
-                status = error.message ?: "تعذر إكمال الطلب."
-                diagnostics = runCatching { TelegramWeb.diagnostics(view) }
-                    .getOrNull()?.summary()?.replace("web.telegram.org", "جلسة المصدر")
-                addLog("فشل: ${error.message}")
+                status = error.message ?: "تعذر إكمال طلب المصدر."
+                addLog("توقف الطلب: ${error.message ?: error.javaClass.simpleName}")
+                val view = PrivateSessionHost.peek()
+                diagnostics = view?.let {
+                    runCatching { TelegramWeb.diagnostics(it).summary() }.getOrNull()
+                }
             } finally {
                 busy = false
+                activeJob = null
             }
         }
     }
 
     ScreenBlock {
-        SectionBar("01", "المصادر الخاصة", if (bots.isEmpty()) "غير مضبوط" else "${bots.size} مصدر")
+        SectionBar(
+            "01",
+            "المصادر الخاصة",
+            if (bots.isEmpty()) "غير مضبوط" else "${bots.size} مصدر"
+        )
+
         if (bots.isEmpty()) {
             NoteBlock(
-                "لا توجد مصادر مضبوطة. أضف مصدراً واختر طريقة الإرسال من الإعدادات، ثم ابدأ البحث هنا.",
+                "لا توجد مصادر مضبوطة. أضف مصدراً من إعدادات المصادر الخاصة أولاً.",
                 IntelColors.Amber,
                 "SETUP"
             )
@@ -245,174 +204,253 @@ fun PrivateSearchPanel(store: LocalStore, onSaved: () -> Unit, onOpenSettings: (
                             selected = bot.id == selectedBotId,
                             label = bot.name.take(24),
                             onClick = {
-                                selectedBotId = bot.id
-                                result = null
-                                diagnostics = null
-                                // The configured flow may intentionally be VALUE_ONLY with no command.
+                                if (!busy) {
+                                    selectedBotId = bot.id
+                                    result = null
+                                    diagnostics = null
+                                }
                             },
                             accent = IntelColors.Violet
                         )
                     }
                 }
+
                 selectedBot?.let { bot ->
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-                        Pill(if (kind == PrivateSourceKind.NUMBER) "بحث رقمي" else "بحث بالاسم", IntelColors.Violet)
-                        MicroLabel("مصدر: " + bot.name, IntelColors.TextFaint)
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(7.dp)
+                    ) {
+                        Pill(
+                            if (kind == PrivateSourceKind.NUMBER) "بحث رقمي" else "بحث بالاسم",
+                            IntelColors.Violet
+                        )
+                        MicroLabel("المصدر: ${bot.name}", IntelColors.TextFaint)
                     }
                 }
+
                 Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
                     ModeChip(
                         selected = kind == PrivateSourceKind.NUMBER,
                         label = "رقم",
-                        onClick = { kind = PrivateSourceKind.NUMBER },
+                        onClick = {
+                            if (!busy) {
+                                kind = PrivateSourceKind.NUMBER
+                                result = null
+                            }
+                        },
                         modifier = Modifier.weight(1f)
                     )
                     ModeChip(
                         selected = kind == PrivateSourceKind.NAME,
                         label = "اسم",
-                        onClick = { kind = PrivateSourceKind.NAME },
+                        onClick = {
+                            if (!busy) {
+                                kind = PrivateSourceKind.NAME
+                                result = null
+                            }
+                        },
                         modifier = Modifier.weight(1f)
                     )
                 }
+
                 IntelField(
                     value = query,
-                    onValueChange = { query = it; result = null },
+                    onValueChange = {
+                        if (!busy) {
+                            query = it
+                            result = null
+                        }
+                    },
                     label = if (kind == PrivateSourceKind.NUMBER) "القيمة الرقمية" else "الاسم",
                     placeholder = if (kind == PrivateSourceKind.NUMBER) "+967…" else "الاسم الكامل"
                 )
+
                 NoteBlock(
-                    "نمط هذا البحث: ${selectedBot?.flow(kind)?.label() ?: "غير محدد"}. غيّره من إعدادات المصادر الخاصة.",
+                    "تدفق هذا المصدر: ${selectedBot?.flow(kind)?.label() ?: "غير محدد"}. " +
+                        "يدعم المحرك الأنماط الثلاثة المحفوظة في الإعدادات.",
                     IntelColors.Violet,
                     "REQUEST FLOW"
                 )
+
                 ToggleRow(
                     checked = saveReplies,
                     onCheckedChange = { saveReplies = it },
                     title = "حفظ الرد في قاعدة الأدلة",
-                    detail = "يُسجَّل الرد مرتبطاً بالقيمة واسم المصدر المختار."
+                    detail = "مغلق افتراضياً لأن الرد وقيمة البحث قد يتضمنان بيانات شخصية."
                 )
+
                 ActionButton(
-                    text = "تنفيذ الطلب التلقائي",
-                    onClick = { start() },
+                    text = "تنفيذ الطلب عبر جلسة Telegram",
+                    onClick = { beginSearch() },
                     modifier = Modifier.fillMaxWidth(),
                     icon = Icons.Filled.Send,
                     loading = busy,
-                    enabled = !busy && selectedBot != null && query.isNotBlank() && webView != null
+                    enabled = !busy && selectedBot != null &&
+                        query.isNotBlank() && webView != null
                 )
+
+                if (busy) {
+                    GhostButton(
+                        text = "إلغاء الطلب الحالي",
+                        onClick = {
+                            status = "جارٍ إلغاء الطلب…"
+                            addLog("طلب المستخدم إلغاء العملية.")
+                            activeJob?.cancel()
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        icon = Icons.Filled.Close,
+                        accent = IntelColors.Amber
+                    )
+                }
+
                 Text(
                     status,
                     fontSize = 9.sp,
                     lineHeight = 14.sp,
-                    color = if (status.startsWith("تعذر") || status.startsWith("لم")) IntelColors.Amber else IntelColors.TextDim
+                    color = if (
+                        status.contains("لم ") ||
+                        status.contains("تعذر") ||
+                        status.contains("انتهت") ||
+                        status.contains("فشل")
+                    ) IntelColors.Amber else IntelColors.TextDim
                 )
             }
         }
 
         if (webView == null) {
             NoteBlock(
-                "لم تُهيأ جلسة المصدر بعد. افتح الإعدادات ← إعدادات المصادر الخاصة ← نافذة الجلسة، ثم سجّل الدخول مرة واحدة.",
+                "مضيف Telegram الدائم لم يُنشأ بعد. لا تحذف بيانات التطبيق ولا تسجّل الخروج؛ سيستخدم البحث جلسة الويب الحالية نفسها.",
                 IntelColors.Amber,
-                "SESSION REQUIRED"
+                "SESSION HOST"
             )
             GhostButton(
-                text = "فتح إعدادات الجلسة",
+                text = "فتح إعدادات جلسة Telegram",
                 onClick = onOpenSettings,
                 accent = IntelColors.Signal
             )
         } else {
             NoteBlock(
-                "جلسة المصدر التي أعددتها من الإعدادات متاحة لمحرك البحث.",
+                "جلسة Telegram الموجودة محفوظة كما هي. سيجري التحقق من المصادقة والمحادثة قبل أي إرسال؛ وجود WebView وحده لا يُعد دليلاً على الجاهزية.",
                 IntelColors.Signal,
-                "SESSION READY"
+                "EXISTING SESSION"
             )
         }
 
         if (log.isNotEmpty()) {
-            SectionBar("03", "سجل الخطوات", "TRACE")
+            SectionBar(
+                "02",
+                "سجل مراحل المحرك",
+                currentStage?.name ?: "TRACE",
+                IntelColors.Signal
+            )
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .background(IntelColors.PanelInset, RoundedCornerShape(2.dp))
                     .padding(9.dp),
-                verticalArrangement = Arrangement.spacedBy(3.dp)
+                verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 log.forEach { line ->
                     Text(
                         line,
-                        color = if (line.contains("تحذير") || line.contains("فشل")) IntelColors.Amber else IntelColors.TextFaint,
+                        color = if (
+                            line.contains("فشل") ||
+                            line.contains("توقف") ||
+                            line.contains("أُلغي")
+                        ) IntelColors.Amber else IntelColors.TextFaint,
                         fontSize = 8.sp,
                         fontFamily = FontFamily.Monospace,
-                        lineHeight = 11.sp
+                        lineHeight = 12.sp
                     )
                 }
             }
         }
 
-        result?.let { text ->
-            SectionBar("04", "النتيجة", "OUTPUT")
+        result?.let { completed ->
+            SectionBar("03", "نتيجة المصدر", "${completed.messageCount} رسائل", IntelColors.Green)
             IntelPanel(accent = IntelColors.Green) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    MicroLabel("CAPTURED REPLY", IntelColors.Green)
+                    MicroLabel("CAPTURED RESPONSE · ${completed.sourceName}", IntelColors.Green)
                     Spacer(Modifier.weight(1f))
                     GhostButton(
                         text = "نسخ",
-                        onClick = { clipboard.setText(AnnotatedString(text)) },
+                        onClick = {
+                            clipboard.setText(AnnotatedString(completed.displayText))
+                        },
                         icon = Icons.Filled.ContentCopy
                     )
                 }
-                Text(text, fontSize = 11.sp, lineHeight = 18.sp, color = IntelColors.Text)
+                DataText(
+                    "المحادثة: ${completed.peerTitle} · النمط: ${completed.flow.label()}",
+                    IntelColors.TextFaint,
+                    size = 8,
+                    maxLines = 2
+                )
+                Text(
+                    completed.displayText,
+                    fontSize = 11.sp,
+                    lineHeight = 18.sp,
+                    color = IntelColors.Text
+                )
+                if (completed.hasMedia) {
+                    NoteBlock(
+                        "التقط المحرك وجود وسائط أو أزرار تفاعل، لكنه لا يحوّل محتوى الوسائط نفسه إلى نص. افتح محادثة المصدر لعرض الأصل.",
+                        IntelColors.Amber,
+                        "NON-TEXT CONTENT"
+                    )
+                }
             }
         }
 
         diagnostics?.let { text ->
-            SectionBar("05", "تشخيص DOM", "DEBUG")
+            SectionBar("04", "حالة WebView عند التوقف", "SAFE DIAGNOSTICS", IntelColors.Amber)
             IntelPanel(contentPadding = 10) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Filled.BugReport, contentDescription = null, tint = IntelColors.Amber, modifier = Modifier.size(14.dp))
-                    Spacer(Modifier.width(6.dp))
-                    MicroLabel("LIVE SNAPSHOT", IntelColors.Amber)
-                }
-                Text(text, fontSize = 8.sp, lineHeight = 12.sp, fontFamily = FontFamily.Monospace, color = IntelColors.TextDim)
+                Text(
+                    text,
+                    fontSize = 8.sp,
+                    lineHeight = 12.sp,
+                    fontFamily = FontFamily.Monospace,
+                    color = IntelColors.TextDim
+                )
             }
         }
     }
 }
 
-/**
- * Captures every new incoming bubble until either the reply goes quiet (4s, with an 8s minimum collection window) or the budget ends.
- * A prompt message is excluded so the bot's question is not mistaken for its answer.
- */
-private suspend fun collectReply(
-    view: WebView,
-    baseline: Set<String>,
-    promptText: String?
-): String {
-    val captured = linkedMapOf<String, String>()
-    var lastNewAt = 0L
-    var firstNewAt = 0L
-    val deadline = android.os.SystemClock.elapsedRealtime() + 90_000L
-    while (android.os.SystemClock.elapsedRealtime() < deadline) {
-        val snapshot = runCatching { TelegramWeb.snapshot(view) }.getOrElse { break }
-        snapshot.messages
-            .filter { message ->
-                !message.outgoing && message.key !in baseline && message.text.isNotBlank() &&
-                    message.text.trim() != promptText?.trim()
-            }
-            .forEach { message ->
-                if (!captured.containsKey(message.key)) {
-                    captured[message.key] = message.text.trim()
-                    val now = android.os.SystemClock.elapsedRealtime()
-                    if (firstNewAt == 0L) firstNewAt = now
-                    lastNewAt = now
-                }
-            }
-        if (captured.isNotEmpty() && android.os.SystemClock.elapsedRealtime() - lastNewAt >= 4_000L && android.os.SystemClock.elapsedRealtime() - firstNewAt >= 8_000L) break
-        delay(700L)
+private class RetainedWebViewTelegramDriver : TelegramSessionDriver {
+    private fun retainedView(): SessionWebView {
+        val view = PrivateSessionHost.peek()
+            ?: throw IllegalStateException("جلسة Telegram غير مهيأة في مضيف التطبيق.")
+        PrivateSessionHost.ensureMounted(view)
+        return view
     }
-    return captured.values.take(20).joinToString("\n\n").trim()
+
+    override suspend fun checkSession(): TelegramSnapshot =
+        TelegramWeb.checkSession(retainedView())
+
+    override suspend fun openTarget(username: String, configuredName: String) {
+        TelegramWeb.openTarget(retainedView(), username, configuredName)
+    }
+
+    override suspend fun snapshot(): TelegramSnapshot =
+        TelegramWeb.snapshot(retainedView())
+
+    override suspend fun startBotIfAvailable(): Boolean =
+        TelegramWeb.startBotIfAvailable(retainedView())
+
+    override suspend fun send(text: String): TelegramSendAttempt =
+        TelegramWeb.send(retainedView(), text)
 }
 
 @Composable
-private fun ScreenBlock(content: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit) {
+private fun ScreenBlock(
+    content: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit
+) {
     Column(verticalArrangement = Arrangement.spacedBy(13.dp), content = content)
+}
+
+
+private object TelegramSessionRuntime {
+    /** A process-wide lock prevents two recomposed search panels from driving one WebView. */
+    val controller = TelegramSessionController(RetainedWebViewTelegramDriver())
 }
