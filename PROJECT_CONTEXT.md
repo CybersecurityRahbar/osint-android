@@ -2654,3 +2654,12 @@
 - أُضيف إلى `.github/workflows/android.yml` تثبيت حزمة `emulator` و`libpulse0`، ثم تكرار فحص QEMU نفسه قبل اختبارات Android.
 - يستخدم الفحص `LD_LIBRARY_PATH` مع مجلدات Android Emulator SDK الداخلية `lib64`, `lib64/qt/lib`, و`lib64/gles_swiftshader`. بذلك نتحقق في Android CI العام من أن فحص التبعيات لا يعطي إنذارات كاذبة بسبب تجاهل مسارات المكتبات التي يضبطها launcher الرسمي.
 - الهدف أن يُرفض أي تشغيل قبل أن يطلب المستخدم bootstrap يدوياً إذا كانت مكتبة نظام حقيقية ناقصة، وأن يثبت الفحص نفسه في CI قبل المتابعة إلى Telegram.
+
+
+### التحقق النهائي من تصحيح LD_LIBRARY_PATH — 2026-11-27
+- Android CI رقم `212` على commit `8576537a93c58e49257882d08f875f2a5c76770c` أكمل بنجاح: Run ID `46065820496`.
+- نجحت خطوة `Verify Android Emulator host runtime libraries` بعد تثبيت حزمة `emulator` و`libpulse0` وتطبيق LD_LIBRARY_PATH على مجلدات SDK الداخلية أثناء فحص `ldd`.
+- نجحت أيضاً اختبارات JVM، واختبارات Android instrumentation على المحاكي، وبناء APK، والتوقيع الثابت ورفع artifact.
+- رابط التشغيل: https://github.com/CybersecurityRahbar/osint-android/actions/runs/46065820496
+- هذا يثبت نجاح نفس preflight المصحح في Android CI العام، ويكشف أن فشل تشغيل Telegram Lab #5/#6 كان بسبب فحص `ldd` غير المطابق لبيئة launcher (false positive)، وليس نقص مكتبات Android SDK بعد تثبيت `libpulse0`.
+- لم يُعد تشغيل Telegram Session CI Lab بعد commit `79b106a...` الذي صحح LD_LIBRARY_PATH؛ لذلك ما زال اختبار ظهور شاشة VNC وفتح جلسة Telegram داخل المختبر بانتظار bootstrap جديد. لا يوجد حتى الآن تسجيل دخول أو cache جلسة مصادق عليها.
