@@ -141,7 +141,9 @@ class TelegramSessionController(
             val bot = request.bot
             val flow = bot.flow(request.kind)
             val command = bot.command(request.kind).trim()
-            if (flow != PrivateSourceFlow.VALUE_ONLY && command.isBlank()) {
+            val usesCommand = flow == PrivateSourceFlow.COMMAND_AND_PROMPT ||
+                flow == PrivateSourceFlow.COMMAND_THEN_VALUE
+            if (usesCommand && command.isBlank()) {
                 throw IllegalArgumentException("نمط المصدر المحدد يحتاج إلى أمر. راجع إعدادات هذا المصدر.")
             }
 
@@ -198,7 +200,7 @@ class TelegramSessionController(
                 )
             }
 
-            if (flow != PrivateSourceFlow.VALUE_ONLY) {
+            if (usesCommand) {
                 val commandBaseline = runStage(
                     requestId,
                     TelegramSearchStage.SEND_COMMAND,

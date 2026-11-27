@@ -50,6 +50,15 @@ class TelegramSessionControllerTest {
     }
 
     @Test
+    fun directMessageFlowSendsOnlyTheSubmittedValueWithoutCommandsOrPrompts() = runBlocking {
+        val driver = FakeTelegramDriver(PrivateSourceFlow.DIRECT_MESSAGE)
+        val result = controller(driver).search(request(PrivateSourceFlow.DIRECT_MESSAGE))
+
+        assertEquals(listOf("test-value"), driver.sent)
+        assertEquals(2, result.messageCount)
+    }
+
+    @Test
     fun valueOnlyFlowNeverSendsConfiguredCommand() = runBlocking {
         val driver = FakeTelegramDriver(PrivateSourceFlow.VALUE_ONLY)
         val result = controller(driver).search(request(PrivateSourceFlow.VALUE_ONLY))

@@ -218,18 +218,18 @@ fun PrivateSourcesSettings(localStore: LocalStore, onSaved: () -> Unit, onBack: 
                     IntelField(
                         draft.numberCommand,
                         { draft = draft.copy(numberCommand = it) },
-                        if (draft.numberFlow == PrivateSourceFlow.VALUE_ONLY) "أمر الرقم (غير مستخدم)" else "أمر البحث بالرقم"
+                        if (draft.numberFlow == PrivateSourceFlow.VALUE_ONLY || draft.numberFlow == PrivateSourceFlow.DIRECT_MESSAGE) "أمر الرقم (غير مستخدم)" else "أمر البحث بالرقم"
                     )
                     IntelField(draft.numberPrompt, { draft = draft.copy(numberPrompt = it) }, "نص مطالبة الرقم المتوقعة")
                     SourceFlowSelector("طريقة البحث بالاسم", draft.nameFlow) { draft = draft.copy(nameFlow = it) }
                     IntelField(
                         draft.nameCommand,
                         { draft = draft.copy(nameCommand = it) },
-                        if (draft.nameFlow == PrivateSourceFlow.VALUE_ONLY) "أمر الاسم (غير مستخدم)" else "أمر البحث بالاسم"
+                        if (draft.nameFlow == PrivateSourceFlow.VALUE_ONLY || draft.nameFlow == PrivateSourceFlow.DIRECT_MESSAGE) "أمر الاسم (غير مستخدم)" else "أمر البحث بالاسم"
                     )
                     IntelField(draft.namePrompt, { draft = draft.copy(namePrompt = it) }, "نص مطالبة الاسم المتوقعة")
                     Text(
-                        "اختر لكل نوع: أمر ثم مطالبة، أو أمر ثم إرسال القيمة، أو إرسال القيمة فقط دون أمر. في النمط الأخير لا يُرسل أي أمر إطلاقاً.",
+                        "اختر لكل نوع: أمر ثم مطالبة، أو أمر ثم قيمة، أو رسالة مباشرة دون أي أمر أو مطالبة، أو النمط القديم قيمة فقط.",
                         fontSize = 8.sp,
                         color = IntelColors.TextFaint,
                         lineHeight = 12.sp
@@ -296,7 +296,8 @@ private fun SourceFlowSelector(
                     label = when (flow) {
                         PrivateSourceFlow.COMMAND_AND_PROMPT -> "أمر + مطالبة"
                         PrivateSourceFlow.COMMAND_THEN_VALUE -> "أمر + قيمة"
-                        PrivateSourceFlow.VALUE_ONLY -> "قيمة فقط"
+                        PrivateSourceFlow.DIRECT_MESSAGE -> "رسالة مباشرة"
+                        PrivateSourceFlow.VALUE_ONLY -> "قيمة فقط (قديم)"
                     },
                     onClick = { onChange(flow) },
                     modifier = Modifier.weight(1f),

@@ -11,6 +11,7 @@ enum class PrivateSourceKind { NUMBER, NAME }
 enum class PrivateSourceFlow {
     COMMAND_AND_PROMPT,
     COMMAND_THEN_VALUE,
+    DIRECT_MESSAGE,
     VALUE_ONLY;
 
     companion object {
@@ -21,7 +22,8 @@ enum class PrivateSourceFlow {
     fun label(): String = when (this) {
         COMMAND_AND_PROMPT -> "أمر ثم مطالبة"
         COMMAND_THEN_VALUE -> "أمر ثم قيمة"
-        VALUE_ONLY -> "إرسال القيمة فقط"
+        DIRECT_MESSAGE -> "رسالة مباشرة (بدون أوامر)"
+        VALUE_ONLY -> "قيمة فقط (النمط القديم)"
     }
 }
 

@@ -244,7 +244,8 @@ fun TelegramLiveLabScreen(onBack: () -> Unit) {
                         label = when (flow) {
                             PrivateSourceFlow.COMMAND_AND_PROMPT -> "أمر + مطالبة"
                             PrivateSourceFlow.COMMAND_THEN_VALUE -> "أمر + قيمة"
-                            PrivateSourceFlow.VALUE_ONLY -> "قيمة فقط"
+                            PrivateSourceFlow.DIRECT_MESSAGE -> "رسالة مباشرة"
+                            PrivateSourceFlow.VALUE_ONLY -> "قيمة فقط (قديم)"
                         },
                         onClick = { updateProfile(profile.copy(flow = flow)) },
                         modifier = Modifier.weight(1f),
@@ -359,7 +360,7 @@ internal data class TelegramLiveLabProfile(
     val botUsername: String = "",
     val chatTitle: String = "",
     val kind: PrivateSourceKind = PrivateSourceKind.NAME,
-    val flow: PrivateSourceFlow = PrivateSourceFlow.VALUE_ONLY,
+    val flow: PrivateSourceFlow = PrivateSourceFlow.DIRECT_MESSAGE,
     val command: String = "",
     val prompt: String = "",
     val testValue: String = "OSINT_LAB_PING_2026",
@@ -371,7 +372,8 @@ internal fun validateTelegramLiveLabProfile(profile: TelegramLiveLabProfile): St
     if (!profile.botUsername.trim().removePrefix("@").matches(Regex("[A-Za-z0-9_]{5,32}"))) {
         return "أدخل معرّف بوت Telegram صحيحاً (5 إلى 32 حرفاً أو رقماً أو _)."
     }
-    if (profile.flow != PrivateSourceFlow.VALUE_ONLY && profile.command.isBlank()) {
+    if ((profile.flow == PrivateSourceFlow.COMMAND_AND_PROMPT ||
+            profile.flow == PrivateSourceFlow.COMMAND_THEN_VALUE) && profile.command.isBlank()) {
         return "أدخل الأمر المطلوب لهذا التدفق أو اختر نمط قيمة فقط."
     }
     if (profile.flow == PrivateSourceFlow.COMMAND_AND_PROMPT && profile.prompt.isBlank()) {
@@ -395,8 +397,8 @@ private class TelegramLiveLabSettingsStore(context: android.content.Context) {
             PrivateSourceKind.valueOf(preferences.getString("kind", PrivateSourceKind.NAME.name).orEmpty())
         }.getOrDefault(PrivateSourceKind.NAME),
         flow = PrivateSourceFlow.fromStored(
-            preferences.getString("flow", PrivateSourceFlow.VALUE_ONLY.name),
-            PrivateSourceFlow.VALUE_ONLY
+            preferences.getString("flow", PrivateSourceFlow.DIRECT_MESSAGE.name),
+            PrivateSourceFlow.DIRECT_MESSAGE
         ),
         command = preferences.getString("command", "").orEmpty(),
         prompt = preferences.getString("prompt", "").orEmpty(),
