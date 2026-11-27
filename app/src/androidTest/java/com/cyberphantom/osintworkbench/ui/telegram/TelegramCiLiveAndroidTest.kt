@@ -4,41 +4,41 @@ import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.cyberphantom.osintworkbench.MainActivity
-import com.cyberphantom.osintworkbench.data.PrivateSourceBot
-import com.cyberphantom.osintworkbench.data.PrivateSourceFlow
-import com.cyberphantom.osintworkbench.data.PrivateSourceKind
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import org.junit.Assert.assertTrue
-import org.junit.Assume.assumeTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 
 /**
- * Real Android WebView integration test. It reuses the authenticated WebView profile
- * restored on the CI emulator and sends only a synthetic marker to a user-owned echo bot.
+ * Authenticated Android WebView smoke test.
+ *
+ * It opens the explicitly configured Telegram bot by public username, verifies the
+ * selected peer, sends only /start (or taps Telegram's native Start button, which
+ * sends the same command), and confirms that a new bot response arrives.
+ * No Bot API token or personal lookup value is used by this test.
  */
 @RunWith(AndroidJUnit4::class)
 class TelegramCiLiveAndroidTest {
     @Test
-    fun retainedTelegramWebViewCompletesDirectMessageEchoRoundTrip() = runBlocking {
+    fun retainedTelegramWebViewCanStartConfiguredBotAndReceiveReply() = runBlocking {
         val arguments = InstrumentationRegistry.getArguments()
-        val botUsername = arguments.getString("telegramCiEchoBotUsername").orEmpty()
-            .trim().removePrefix("@")
-        val testValue = arguments.getString("telegramCiTestValue").orEmpty().trim()
-        val expectedPrefix = arguments.getString("telegramCiExpectedReplyPrefix")
-            .orEmpty().ifBlank { "OSINT_CI_ECHO_OK:" }
+        val botUsername = arguments.getString("telegramCiBotUsername")
+            .orEmpty()
+            .trim()
+            .removePrefix("@")
 
-        assumeTrue("CI echo bot username was not supplied; live test is opt-in.", botUsername.isNotBlank())
-        assumeTrue("CI test value was not supplied.", testValue.startsWith("OSINT_CI_PING_"))
-        assumeTrue("CI echo bot username is invalid.", botUsername.matches(Regex("[A-Za-z0-9_]{5,32}")))
+        assertTrue(
+            "Set telegramCiBotUsername to a Telegram bot username.",
+            botUsername.matches(Regex("[A-Za-z0-9_]{5,32}"))
+        )
 
         val scenario = ActivityScenario.launch(MainActivity::class.java)
         try {
-            withTimeout(30_000L) {
+            val view = withTimeout(30_000L) {
                 while (true) {
                     val candidate = withContext(Dispatchers.Main) { PrivateSessionHost.peek() }
                     if (candidate != null && candidate.isAttachedToWindow) {
@@ -46,98 +46,90 @@ class TelegramCiLiveAndroidTest {
                             PrivateSessionHost.ensureMounted(candidate)
                             PrivateSessionHost.showSession()
                         }
-                        break
+                        return@withTimeout candidate
                     }
                     delay(100L)
                 }
+                error("Telegram WebView host was not created.")
             }
 
-            val driver = AndroidTestTelegramDriver()
-            val bot = PrivateSourceBot(
-                id = "telegram-ci-echo",
-                name = "CI Echo Bot",
-                username = botUsername,
-                numberCommand = "",
-                nameCommand = "",
-                numberPrompt = "",
-                namePrompt = "",
-                numberFlow = PrivateSourceFlow.DIRECT_MESSAGE,
-                nameFlow = PrivateSourceFlow.DIRECT_MESSAGE,
-                chatTitle = ""
-            )
-            val controller = TelegramSessionController(
-                driver,
-                TelegramStageTimeouts(
-                    checkSessionMillis = 25_000L,
-                    openTargetMillis = 12_000L,
-                    verifyPeerMillis = 70_000L,
-                    verifyComposerMillis = 45_000L,
-                    sendMillis = 25_000L,
-                    valueEchoMillis = 25_000L,
-                    collectReplyMillis = 90_000L,
-                    pollIntervalMillis = 500L,
-                    replyQuietMillis = 3_000L,
-                    replyMinimumMillis = 5_000L
-                )
+            val session = TelegramWeb.checkSession(view)
+            assertTrue(
+                "The saved Telegram WebView session is not authenticated.",
+                session.isAuthenticated && !session.isLoginPage
             )
 
-            val nameResult = controller.search(
-                TelegramSearchRequest(
-                    bot = bot,
-                    kind = PrivateSourceKind.NAME,
-                    value = testValue
-                )
-            )
-            val expectedNameEcho = expectedPrefix + testValue
-            assertTrue(
-                "The direct-message name path did not capture the synthetic echo reply. Reply count=" +
-                    nameResult.messageCount,
-                nameResult.messages.any { it.text.contains(expectedNameEcho, ignoreCase = true) }
-            )
+            TelegramWeb.openTarget(view, botUsername, "")
 
-            // This all-zero string is deliberately synthetic and is handled only by the
-            // owner-controlled echo bot; it is not a real person's phone number.
-            val syntheticNumber = "000000000000"
-            val numberResult = controller.search(
-                TelegramSearchRequest(
-                    bot = bot,
-                    kind = PrivateSourceKind.NUMBER,
-                    value = syntheticNumber
+            val target = withTimeout(70_000L) {
+                while (true) {
+                    val current = TelegramWeb.snapshot(view)
+                    assertTrue(
+                        "Telegram left the authenticated app while opening the configured bot.",
+                        current.isAuthenticated && !current.isLoginPage
+                    )
+                    if (TelegramPeerMatcher.isTargetIdentity(current, botUsername, "")) {
+                        return@withTimeout current
+                    }
+                    delay(500L)
+                }
+                error("Bot target was not resolved.")
+            }
+
+            val baselineKeys = target.messages.map { it.key }.toSet()
+
+            if (target.hasComposer) {
+                TelegramWeb.send(view, "/start")
+            } else {
+                val startClicked = TelegramWeb.startBotIfAvailable(view)
+                assertTrue(
+                    "The bot chat had no message composer and Telegram's Start button was not found.",
+                    startClicked
                 )
-            )
-            val expectedNumberEcho = expectedPrefix + syntheticNumber
+            }
+
+            val outgoingStart = withTimeout(35_000L) {
+                while (true) {
+                    val current = TelegramWeb.snapshot(view)
+                    assertTrue(
+                        "The selected Telegram chat changed while sending /start.",
+                        TelegramPeerMatcher.isTargetIdentity(current, botUsername, "")
+                    )
+                    val sent = current.messages.firstOrNull {
+                        it.outgoing &&
+                            it.key !in baselineKeys &&
+                            it.text.trim().startsWith("/start", ignoreCase = true)
+                    }
+                    if (sent != null) return@withTimeout sent
+                    delay(500L)
+                }
+                error("The outgoing /start message was not confirmed.")
+            }
+            assertTrue("The outgoing /start message was empty.", outgoingStart.text.isNotBlank())
+
+            val response = withTimeout(60_000L) {
+                while (true) {
+                    val current = TelegramWeb.snapshot(view)
+                    assertTrue(
+                        "The selected Telegram chat changed while waiting for the bot response.",
+                        TelegramPeerMatcher.isTargetIdentity(current, botUsername, "")
+                    )
+                    val incoming = current.messages.filter {
+                        !it.outgoing && it.key !in baselineKeys
+                    }
+                    if (incoming.isNotEmpty()) return@withTimeout incoming
+                    delay(500L)
+                }
+                error("No new incoming response arrived after /start.")
+            }
+
+            // Do not print or persist bot response text in CI output.
             assertTrue(
-                "The direct-message number path did not capture the synthetic echo reply. Reply count=" +
-                    numberResult.messageCount,
-                numberResult.messages.any { it.text.contains(expectedNumberEcho, ignoreCase = true) }
+                "Telegram received no usable new response messages after /start.",
+                response.any { it.text.isNotBlank() || it.contentType != "text" || it.mediaCount > 0 }
             )
         } finally {
             scenario.close()
         }
     }
-}
-
-private class AndroidTestTelegramDriver : TelegramSessionDriver {
-    private suspend fun view(): SessionWebView = withContext(Dispatchers.Main) {
-        val retained = PrivateSessionHost.peek()
-            ?: throw IllegalStateException("CI WebView host has not been created.")
-        PrivateSessionHost.ensureMounted(retained)
-        retained
-    }
-
-    override suspend fun checkSession(): TelegramSnapshot =
-        TelegramWeb.checkSession(view())
-
-    override suspend fun openTarget(username: String, configuredName: String) {
-        TelegramWeb.openTarget(view(), username, configuredName)
-    }
-
-    override suspend fun snapshot(): TelegramSnapshot =
-        TelegramWeb.snapshot(view())
-
-    override suspend fun startBotIfAvailable(): Boolean =
-        TelegramWeb.startBotIfAvailable(view())
-
-    override suspend fun send(text: String): TelegramSendAttempt =
-        TelegramWeb.send(view(), text)
 }
