@@ -2732,3 +2732,27 @@
 - نجحت خطوة `Validate Telegram CI helper scripts`، وهي تنفذ `python3 -m py_compile` على `remote_console.py` و`session_crypto.py`؛ كما نجحت اختبارات JVM وAndroid Runtime Tests وتجهيز التوقيع وبناء APK ورفع artifact.
 - هذا يؤكد صحة syntax للـ proxy المعدّل وعدم كسر مسار بناء التطبيق، لكنه لا ينفذ فحوص HTTP الخاصة بملفات noVNC المضافة داخل خطوة `Open protected remote login console`. إثبات عرض الواجهة يحتاج Telegram bootstrap جديداً على commit `d94c0d7...`.
 - رابط Android CI #214: https://github.com/CybersecurityRahbar/osint-android/actions/runs/46070705884
+
+
+
+## 2026-11-28 — تشخيص فشل Telegram Session CI Lab #9 عند Open protected remote login console
+
+### سجل التشغيل والأدلة
+- التشغيل: `Telegram Session CI Lab #9`، Run ID: `46071534803`، commit: `c36c0ef82a1018a60ab4ba0974443ba647aacc66`، الوظيفة: `telegram-lab`، Job ID: `140749372815`.
+- نجحت جميع الخطوات السابقة، بما فيها تفعيل KVM، فحص مكتبات QEMU، اختبار تشفير الجلسة، إنشاء AVD، تجهيز التوقيع، بناء APK، و`Boot emulator with remote display`.
+- وقع الفشل حصراً في الخطوة رقم 17: `Open protected remote login console`. ورسالة Python الحاسمة:
+  `remote_console.py: error: argument --finish-token: expected one argument`.
+- قبل تشغيل الخادم اجتازت الخطوة اختبارات موارد noVNC المباشرة وفحص اتصال x11vnc، ثم حاولت تشغيل:
+  `python3 scripts/telegram-lab/remote_console.py --finish-file ... --finish-token "$FINISH_TOKEN"`.
+- ينشئ workflow الرمز بواسطة `secrets.token_urlsafe(32)`. هذا الترميز قد يبدأ أحياناً بالحرف `-`. وعند تمرير القيمة كوسيط منفصل بعد `--finish-token`، يفسر `argparse` القيمة التي تبدأ بشرطة على أنها خيار جديد، فيعتبر أن `--finish-token` لم يتلق قيمة. هذا يطابق رسالة الخطأ المسجلة؛ لم تتم طباعة الرمز نفسه في السجل حفاظاً على سريته.
+- رسائل `curl: (7) Failed to connect to 127.0.0.1 port 8080` و`Remote console HTTP server did not become ready` نتائج لاحقة وليست سبباً مستقلاً: عملية `remote_console.py` خرجت مباشرة بسبب تحليل الوسيط، ولذلك لم يبدأ خادم HTTP على المنفذ 8080.
+- لم يتم إنشاء نفق Cloudflare، ولم تظهر شاشة تسجيل الدخول. كما تم تخطي اختبارات WebView والتشفير/حفظ cache؛ لا يوجد تسجيل دخول Telegram أو جلسة جديدة محفوظة في هذا التشغيل.
+
+### الإصلاح البرمجي المحدد
+- تغيير تمرير الرمز في `.github/workflows/telegram-session-lab.yml` من:
+  `--finish-token "$FINISH_TOKEN"`
+  إلى:
+  `--finish-token="$FINISH_TOKEN"`.
+- صيغة `--option=value` تجعل `argparse` يتعامل مع الرمز كاملاً كقيمة واحدة حتى عندما يبدأ بشرطة، مع بقاء الرمز العشوائي والتحقق الأمني كما هما.
+- لم يتم تعديل الكود أو إعادة تشغيل workflow ضمن هذا التشخيص؛ الإصلاح أعلاه توصية محددة لم تُطبّق أو تُختبر بعد. يجب بعد تطبيقه تشغيل Telegram Session CI Lab من `main` والتحقق من بدء خادم 8080، اجتياز اختبارات موارد noVNC عبر reverse proxy، ثم ظهور واجهة Android الفعلية قبل اعتبار مسار تسجيل الدخول جاهزاً.
+- رابط التشغيل الفاشل: https://github.com/CybersecurityRahbar/osint-android/actions/runs/46071534803
