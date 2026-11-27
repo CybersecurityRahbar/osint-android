@@ -1,17 +1,21 @@
 #!/usr/bin/env python3
-"""Authenticated encryption for the dedicated Telegram CI emulator disk image."""
+"""Streaming AES-256-GCM encryption for the dedicated Telegram CI emulator disk."""
 from __future__ import annotations
 
 import argparse
-import io
 import os
 import re
 import tarfile
+import tempfile
 from pathlib import Path
 
-from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 
 MAGIC = b"TGCI1"
+HEADER_SIZE = len(MAGIC) + 12
+TAG_SIZE = 16
+CHUNK_SIZE = 1024 * 1024
 ALLOWED_IMAGES = ("userdata-qemu.img", "encryptionkey.img", "sdcard.img")
 AAD = b"osint-android/telegram-ci-session/v1"
 
@@ -25,60 +29,115 @@ def load_key() -> bytes:
     return bytes.fromhex(value)
 
 
-def encrypt(avd_dir: Path, output: Path) -> None:
-    buffer = io.BytesIO()
+def create_archive(avd_dir: Path, archive_path: Path) -> list[str]:
     found: list[str] = []
-    with tarfile.open(fileobj=buffer, mode="w:gz") as archive:
+    with tarfile.open(archive_path, mode="w:gz") as archive:
         for name in ALLOWED_IMAGES:
             image = avd_dir / name
             if image.is_file():
                 archive.add(image, arcname=name, recursive=False)
                 found.append(name)
-
     if "userdata-qemu.img" not in found:
         raise SystemExit(
             "The emulator did not create userdata-qemu.img; refusing to save an incomplete session."
         )
+    return found
 
-    nonce = os.urandom(12)
-    ciphertext = AESGCM(load_key()).encrypt(nonce, buffer.getvalue(), AAD)
+
+def encrypt(avd_dir: Path, output: Path) -> None:
     output.parent.mkdir(parents=True, exist_ok=True)
-    output.write_bytes(MAGIC + nonce + ciphertext)
-    os.chmod(output, 0o600)
+    os.chmod(output.parent, 0o700) if output.parent.exists() else None
+
+    with tempfile.TemporaryDirectory(prefix="telegram-ci-") as temporary:
+        archive_path = Path(temporary) / "emulator-state.tar.gz"
+        found = create_archive(avd_dir, archive_path)
+
+        nonce = os.urandom(12)
+        encryptor = Cipher(
+            algorithms.AES(load_key()),
+            modes.GCM(nonce),
+        ).encryptor()
+        encryptor.authenticate_additional_data(AAD)
+
+        temporary_output = output.with_suffix(output.suffix + ".tmp")
+        with archive_path.open("rb") as source, temporary_output.open("wb") as target:
+            target.write(MAGIC + nonce)
+            while True:
+                chunk = source.read(CHUNK_SIZE)
+                if not chunk:
+                    break
+                encrypted = encryptor.update(chunk)
+                if encrypted:
+                    target.write(encrypted)
+            tail = encryptor.finalize()
+            if tail:
+                target.write(tail)
+            target.write(encryptor.tag)
+
+        os.chmod(temporary_output, 0o600)
+        temporary_output.replace(output)
     print("Encrypted Telegram CI emulator state saved. Image members: " + ", ".join(found))
 
 
 def decrypt(source: Path, avd_dir: Path) -> None:
-    blob = source.read_bytes()
-    if len(blob) < len(MAGIC) + 12 + 16 or not blob.startswith(MAGIC):
+    file_size = source.stat().st_size
+    if file_size < HEADER_SIZE + TAG_SIZE:
         raise SystemExit("Cached Telegram CI state has an invalid format.")
 
-    nonce = blob[len(MAGIC):len(MAGIC) + 12]
-    ciphertext = blob[len(MAGIC) + 12:]
-    try:
-        plaintext = AESGCM(load_key()).decrypt(nonce, ciphertext, AAD)
-    except Exception:
-        raise SystemExit(
-            "Unable to decrypt Telegram CI state. Check that TELEGRAM_CI_SESSION_KEY is unchanged."
-        )
-
     avd_dir.mkdir(parents=True, exist_ok=True)
-    restored: list[str] = []
-    with tarfile.open(fileobj=io.BytesIO(plaintext), mode="r:gz") as archive:
-        for member in archive.getmembers():
-            if member.name not in ALLOWED_IMAGES or not member.isfile():
-                raise SystemExit("Refusing an unexpected path in the encrypted emulator image.")
-            source_file = archive.extractfile(member)
-            if source_file is None:
-                raise SystemExit("Unable to read an emulator image from the encrypted archive.")
-            destination = avd_dir / member.name
-            with destination.open("wb") as output:
-                while True:
-                    chunk = source_file.read(1024 * 1024)
-                    if not chunk:
-                        break
-                    output.write(chunk)
-            restored.append(member.name)
+    with source.open("rb") as encrypted_file:
+        prefix = encrypted_file.read(HEADER_SIZE)
+        if len(prefix) != HEADER_SIZE or not prefix.startswith(MAGIC):
+            raise SystemExit("Cached Telegram CI state has an invalid format.")
+        nonce = prefix[len(MAGIC):]
+        payload_size = file_size - HEADER_SIZE - TAG_SIZE
+        encrypted_file.seek(file_size - TAG_SIZE)
+        tag = encrypted_file.read(TAG_SIZE)
+        encrypted_file.seek(HEADER_SIZE)
+
+        decryptor = Cipher(
+            algorithms.AES(load_key()),
+            modes.GCM(nonce, tag),
+        ).decryptor()
+        decryptor.authenticate_additional_data(AAD)
+
+        with tempfile.TemporaryDirectory(prefix="telegram-ci-restore-") as temporary:
+            archive_path = Path(temporary) / "emulator-state.tar.gz"
+            remaining = payload_size
+            try:
+                with archive_path.open("wb") as archive_file:
+                    while remaining:
+                        chunk = encrypted_file.read(min(CHUNK_SIZE, remaining))
+                        if not chunk:
+                            raise SystemExit("Encrypted Telegram CI state ended unexpectedly.")
+                        remaining -= len(chunk)
+                        plaintext = decryptor.update(chunk)
+                        if plaintext:
+                            archive_file.write(plaintext)
+                    final = decryptor.finalize()
+                    if final:
+                        archive_file.write(final)
+            except Exception:
+                raise SystemExit(
+                    "Unable to authenticate/decrypt Telegram CI state. Check the Actions secret."
+                )
+
+            restored: list[str] = []
+            with tarfile.open(archive_path, mode="r:gz") as archive:
+                for member in archive.getmembers():
+                    if member.name not in ALLOWED_IMAGES or not member.isfile():
+                        raise SystemExit("Refusing an unexpected path in the encrypted emulator image.")
+                    source_file = archive.extractfile(member)
+                    if source_file is None:
+                        raise SystemExit("Unable to read an emulator image from the encrypted archive.")
+                    destination = avd_dir / member.name
+                    with destination.open("wb") as output_file:
+                        while True:
+                            chunk = source_file.read(CHUNK_SIZE)
+                            if not chunk:
+                                break
+                            output_file.write(chunk)
+                    restored.append(member.name)
 
     if "userdata-qemu.img" not in restored:
         raise SystemExit("Encrypted Telegram CI state is missing userdata-qemu.img.")
