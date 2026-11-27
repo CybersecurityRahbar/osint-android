@@ -2663,3 +2663,30 @@
 - رابط التشغيل: https://github.com/CybersecurityRahbar/osint-android/actions/runs/46065820496
 - هذا يثبت نجاح نفس preflight المصحح في Android CI العام، ويكشف أن فشل تشغيل Telegram Lab #5/#6 كان بسبب فحص `ldd` غير المطابق لبيئة launcher (false positive)، وليس نقص مكتبات Android SDK بعد تثبيت `libpulse0`.
 - لم يُعد تشغيل Telegram Session CI Lab بعد commit `79b106a...` الذي صحح LD_LIBRARY_PATH؛ لذلك ما زال اختبار ظهور شاشة VNC وفتح جلسة Telegram داخل المختبر بانتظار bootstrap جديد. لا يوجد حتى الآن تسجيل دخول أو cache جلسة مصادق عليها.
+
+
+## 2026-11-27 — تشخيص فشل Telegram Session CI Lab #7 وإصلاح صلاحيات KVM
+
+### سجل التشغيل الفعلي
+- التشغيل: `Telegram Session CI Lab #7`، Run ID: `46066561754`، commit: `a2f9e670d148e96c5f966ad21a64b204dd3bd090`.
+- نجحت الخطوات: إعداد JDK وGradle وAndroid SDK، تثبيت تبعيات سطح المكتب والمكتبات، `Verify Android Emulator host runtime libraries`، اختبار دورة التشفير AES-GCM، إنشاء AVD، تجهيز مفتاح التوقيع الثابت، وبناء APK.
+- فشلت خطوة `Boot emulator with remote display` فور بدء المحاكي. لم تصل العملية إلى ADB أو تشغيل التطبيق، وتم تخطي `Open protected remote login console`.
+- سجل QEMU الحاسم:
+  - `ProbeKVM: This user doesn't have permissions to use KVM (/dev/kvm).`
+  - مجموعة KVM كانت تظهر في `/etc/group` دون إضافة مستخدم runner: `kvm:x:991:`.
+  - `ERROR | x86_64 emulation currently requires hardware acceleration!`
+- السبب الجذري هو أن جهاز `/dev/kvm` موجود على GitHub-hosted runner، لكن مستخدم GitHub Actions لم يكن يملك صلاحية فتحه. هذا ليس نقص مكتبات، ولا خطأ في APK أو Telegram أو تشفير الجلسة. نجاح فحص المكتبات السابق أكد أن مشكلة `LD_LIBRARY_PATH/libpulse0` انتهت؛ وهذه عقبة مستقلة خاصة بصلاحيات التسريع العتادي.
+
+### الإصلاح المطبق على main
+- إضافة خطوة مستقلة باسم `Enable KVM access for Android Emulator` قبل بناء APK وتشغيل المحاكي.
+- تتحقق أولاً من وجود `/dev/kvm`، ثم تطبق قاعدة udev الموثقة من GitHub:
+  `KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"`.
+- تعيد تحميل قواعد udev وتفعيلها، وتضبط صلاحيات عقدة `/dev/kvm` الحالية داخل runner المؤقت، ثم تتحقق من القراءة والكتابة وتنفذ اختبار فتح حقيقي عبر `os.open(..., O_RDWR)`.
+- تفشل هذه الخطوة مبكراً برسالة محددة إذا كان جهاز KVM غير موجود أو بقي غير قابل للفتح، بدلاً من الانتظار حتى فشل QEMU.
+- تم تحديث `docs/TELEGRAM_SESSION_CI_LAB.md` بهذه النتيجة والإصلاح ومراجع GitHub الرسمية.
+- لم يتم تغيير أسرار التوقيع أو alias أو آلية AES-GCM أو بيانات التطبيق. لم يُستخدم TDLib.
+
+### حالة التحقق والمرحلة التالية
+- هذا الإصلاح أُضيف إلى Workflow وجرى توثيقه، لكن لم يُختبر بعد في تشغيل Telegram Session Lab جديد؛ لذلك لا ندعي أن شاشة المحاكي أو VNC أصبحت تعمل حتى يظهر تشغيل bootstrap يجتاز خطوة KVM ثم ينجح `Boot emulator with remote display`.
+- Android CI #212 السابق لا يثبت صلاحيات KVM في Telegram Lab؛ الاختبار الحاسم هو bootstrap بعد هذا الالتزام.
+- لم يتم تسجيل الدخول إلى Telegram أو حفظ جلسة أو فتح محادثة بوت أو إرسال `/start` في التشغيل #7؛ فشل التشغيل قبل ظهور واجهة المحاكي.

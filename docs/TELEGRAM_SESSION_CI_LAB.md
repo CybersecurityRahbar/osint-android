@@ -94,3 +94,21 @@ The QEMU executable is not a standalone Linux binary. The Android SDK bundles em
 
 
 The general Android CI workflow also runs this host-runtime preflight now, before its instrumentation emulator tests. This provides an automated check of the same QEMU library search-path setup without requiring a manual Telegram bootstrap to discover basic host dependency issues.
+
+
+## KVM hardware-acceleration permissions (2026-11-27)
+
+The first bootstrap that passed the SDK/QEMU shared-library preflight reached the emulator launch but QEMU exited immediately with:
+
+```text
+ProbeKVM: This user doesn't have permissions to use KVM (/dev/kvm).
+ERROR | x86_64 emulation currently requires hardware acceleration!
+```
+
+The runner did expose `/dev/kvm`; the issue was that the GitHub Actions runner user did not have permission to open it. The Telegram workflow now has an explicit `Enable KVM access for Android Emulator` step before the library preflight and APK build. It applies the KVM udev rule documented by GitHub, updates the current `/dev/kvm` node on this disposable hosted VM, then verifies both read/write access and a real `open(O_RDWR)` from the workflow user. If the device is absent or still inaccessible, the job fails at this short preflight with a direct error instead of trying to launch Android and failing later.
+
+References:
+- GitHub Changelog, hardware-accelerated Android virtualization in Actions: https://github.blog/changelog/2024-04-02-github-actions-hardware-accelerated-android-virtualization-now-available/
+- GitHub-hosted runners reference: https://docs.github.com/en/actions/reference/runners/github-hosted-runners
+
+This permission change is scoped to the temporary GitHub-hosted runner used by this workflow; it does not alter permissions on the user's phone or computer.
