@@ -42,7 +42,10 @@ class TelegramCiLiveAndroidTest {
                 while (true) {
                     val candidate = withContext(Dispatchers.Main) { PrivateSessionHost.peek() }
                     if (candidate != null && candidate.isAttachedToWindow) {
-                        withContext(Dispatchers.Main) { PrivateSessionHost.ensureMounted(candidate) }
+                        withContext(Dispatchers.Main) {
+                            PrivateSessionHost.ensureMounted(candidate)
+                            PrivateSessionHost.showSession()
+                        }
                         break
                     }
                     delay(100L)

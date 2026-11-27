@@ -9,7 +9,6 @@ import tarfile
 import tempfile
 from pathlib import Path
 
-from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 
 MAGIC = b"TGCI1"
