@@ -17,9 +17,18 @@ android {
         manifestPlaceholders["appLabel"] = "OSINT Workbench"
         minSdk = 26
         targetSdk = 36
-        versionCode = 20
-        versionName = "0.12.2"
+        versionCode = 21
+        versionName = "0.12.3"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        providers.gradleProperty("telegramCiEchoBotUsername").orNull?.let {
+            testInstrumentationRunnerArguments["telegramCiEchoBotUsername"] = it
+        }
+        providers.gradleProperty("telegramCiTestValue").orNull?.let {
+            testInstrumentationRunnerArguments["telegramCiTestValue"] = it
+        }
+        providers.gradleProperty("telegramCiExpectedReplyPrefix").orNull?.let {
+            testInstrumentationRunnerArguments["telegramCiExpectedReplyPrefix"] = it
+        }
     }
 
     if (hasStablePreviewSigning) {
@@ -42,7 +51,7 @@ android {
             if (hasStablePreviewSigning) {
                 signingConfig = signingConfigs.getByName("previewStable")
             }
-            manifestPlaceholders["appLabel"] = "OSINT Workbench Preview 0.12.1"
+            manifestPlaceholders["appLabel"] = "OSINT Workbench Preview 0.12.3"
         }
     }
 
@@ -91,6 +100,7 @@ dependencies {
     // Use the real JSON implementation in local JVM tests instead of Android's stubbed org.json classes.
     testImplementation("org.json:json:20250517")
 
+    androidTestImplementation("androidx.test:core:1.7.0")
     androidTestImplementation("androidx.test:runner:1.7.0")
     androidTestImplementation("androidx.test.ext:junit:1.3.0")
     androidTestImplementation("androidx.compose.ui:ui-test-junit4")

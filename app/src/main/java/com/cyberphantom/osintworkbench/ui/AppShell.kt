@@ -1,5 +1,6 @@
 package com.cyberphantom.osintworkbench.ui
 
+import android.app.Activity
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -122,7 +123,16 @@ fun WorkbenchApp() {
         }
     }
 
-    LaunchedEffect(Unit) { refresh() }
+    LaunchedEffect(Unit) {
+        refresh()
+        val openTelegramForCi = (context as? Activity)
+            ?.intent
+            ?.getBooleanExtra("telegram_ci_open_session", false) == true
+        if (openTelegramForCi) {
+            delay(1_500L)
+            PrivateSessionHost.showSession()
+        }
+    }
     val sessionVisible by PrivateSessionHost.sessionVisible
 
     fun navigateTo(destination: WorkbenchTab) {
