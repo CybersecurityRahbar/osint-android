@@ -2591,3 +2591,27 @@
 - تم رفع artifact باسم `osint-workbench-v0.12.3-preview-apk`، رقم artifact `15228254319`، وحجمه 20,178,893 bytes، مع نجاح خطوة التوقيع الثابت.
 - رابط التشغيل الناجح: https://github.com/CybersecurityRahbar/osint-android/actions/runs/46061816354
 - هذه النتيجة تؤكد أن Android CI العام أصبح سليماً في هذا الالتزام وأن APK بُني ووُقع ورُفع؛ لكنها لا تثبت بعد نجاح محاكي Telegram Session CI Lab أو تسجيل الدخول/حفظ الجلسة. يجب إجراء bootstrap منفصل الآن باستخدام النسخة التي تستدعي emulator بمساره المطلق.
+
+
+## 2026-11-27 — تحليل فشل Telegram Session CI Lab رقم 4 وإصلاح اعتماد QEMU على PulseAudio
+
+### سجل التشغيل الفعلي
+- التشغيل: `Telegram Session CI Lab #4`، Run ID: `46062736898`، commit: `2c29c1c27f36afe80cf8e0fd276da06e2afda64f`.
+- نجحت تهيئة Java/Gradle/SDK، تثبيت أدوات التحكم عن بعد، round-trip للتشفير، إنشاء AVD، تجهيز التوقيع وبناء APK.
+- لم يكن الخطأ هذه المرة متعلقاً بمسار `PATH`: ملف المحاكي وQEMU عُثر عليهما، وظهر في log إصدار Android Emulator `37.3.10.0`.
+- الخطأ الدقيق من QEMU:
+  `qemu-system-x86_64: error while loading shared libraries: libpulse.so.0: cannot open shared object file: No such file or directory`.
+- لذلك أنهى QEMU نفسه قبل تسجيل أي جهاز لدى ADB. أداة ADB بقيت تنتظر 180 ثانية، ثم فشلت خطوة Boot emulator. لا علاقة لهذا الخطأ بكود Android أو Telegram أو ببيانات دخول المستخدم.
+- السبب الجذري: بيئة Ubuntu runner لم تحتوِ مكتبة PulseAudio runtime `libpulse0` التي يحتاجها ملف QEMU، حتى مع تمرير خيار `-no-audio` إلى المحاكي.
+- مرجع تقني لحالة الخطأ نفسها على GitHub Actions: https://github.com/actions/runner-images/issues/6253. مرجع إضافي عن تشغيل Android emulator على Linux CI وضرورة تثبيت مكتبات المضيف: https://linuxier.com/blog/headless-android-emulators-on-linux-for-ci-testing/
+
+### الإصلاح الجديد
+- أضيفت حزمة `libpulse0` إلى تثبيت تبعيات المحاكي في Telegram workflow.
+- أضيفت خطوة `Verify Android Emulator host runtime libraries` قبل بناء/إقلاع AVD. تفحص `ldd` على `qemu-system-x86_64` وترفض وجود أي مكتبة `not found`، ثم تشغّل `emulator -version` لاختبار ملف الإطلاق.
+- بعد طلب تشغيل المحاكي، ينتظر workflow عشر ثوانٍ ويفحص بقاء عملية المحاكي؛ إذا خرجت مبكراً يطبع سجلها وينهي الخطوة فوراً بدلاً من ترك المستخدم ينتظر مهلة ADB كاملة.
+- تم تحديث `docs/TELEGRAM_SESSION_CI_LAB.md` بهذه الحماية والتشخيص المبكر.
+
+### الحالة والضبط
+- هذا هو السبب الثالث المختلف الذي ظهر في سلسلة المختبر: أولاً مسار executable غير مضاف إلى PATH، ثم بعد إصلاحه ظهرت مكتبة مضيف ناقصة `libpulse.so.0`. لا يوجد دليل على مشكلة في التطبيق نفسه أو Android APK في التشغيل رقم 4.
+- تم تسجيل أن نجاح Android CI رقم 208 منفصل عن نجاح Telegram emulator bootstrap.
+- يجب أن يكون التحقق التالي على تشغيل bootstrap جديد: يجب اجتياز خطوة فحص المكتبات، ثم إقلاع ADB، ثم ظهور خطوة Cloudflare console. لم يتم حتى الآن عرض واجهة المحاكي أو حفظ جلسة Telegram.

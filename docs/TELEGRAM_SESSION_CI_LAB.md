@@ -77,3 +77,12 @@ The normal `Android CI` workflow runs unit tests and the non-live Android instru
 - The test method marked `RequiresTelegramSession`, because it needs a restored logged-in Telegram WebView and an explicit bot username.
 
 The dedicated `Telegram Session CI Lab` passes `-PtelegramCiBotUsername=...`. Gradle then narrows instrumentation to `TelegramCiLiveAndroidTest` only and passes that username to the test runner. This prevents ordinary Android CI from attempting a live Telegram operation without a session or a bot configuration.
+
+
+## Linux host dependencies for Android Emulator (2026-11-27)
+
+The Telegram CI job installs `libpulse0` explicitly. Although the emulator is started with `-no-audio`, the Linux QEMU binary can still dynamically load PulseAudio's client library. Before creating or booting the AVD, the workflow now:
+- Runs `ldd` against the x86_64 QEMU executable and fails immediately if any dependency is marked `not found`.
+- Runs the Android Emulator launcher with `-version` as a launch preflight.
+- Checks that the emulator process remains alive shortly after boot is requested and prints its own log immediately if it exits.
+This is intended to turn native runner-image dependency failures into a short, explicit preflight failure instead of a three-minute ADB timeout.

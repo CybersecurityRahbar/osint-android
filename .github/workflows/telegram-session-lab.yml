@@ -128,11 +128,36 @@ jobs:
           echo "$ANDROID_HOME/emulator" >> "$GITHUB_PATH"
           echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
           sudo apt-get update
-          sudo apt-get install -y xvfb x11vnc openbox novnc websockify python3-pip
+          sudo apt-get install -y xvfb x11vnc openbox novnc websockify python3-pip libpulse0
           python3 -m pip install --user --break-system-packages "aiohttp==3.11.18" "cryptography==45.0.5"
           sudo curl -fsSL https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 -o /usr/local/bin/cloudflared
           sudo chmod +x /usr/local/bin/cloudflared
           mkdir -p "$ANDROID_AVD_HOME" .telegram-ci
+
+      - name: Verify Android Emulator host runtime libraries
+        if: ${{ env.LAB_MODE != 'refresh' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          QEMU_BIN="$ANDROID_HOME/emulator/qemu/linux-x86_64/qemu-system-x86_64"
+          EMULATOR_BIN="$ANDROID_HOME/emulator/emulator"
+          if [[ ! -x "$QEMU_BIN" || ! -x "$EMULATOR_BIN" ]]; then
+            echo "::error::Android Emulator binaries are missing from the SDK installation."
+            ls -la "$ANDROID_HOME/emulator" || true
+            exit 1
+          fi
+
+          echo "Checking QEMU shared-library dependencies..."
+          LDD_OUTPUT="$(ldd "$QEMU_BIN" 2>&1 || true)"
+          printf '%s\\n' "$LDD_OUTPUT"
+          if grep -q "not found" <<< "$LDD_OUTPUT"; then
+            echo "::error::Android Emulator has unresolved Linux shared-library dependencies."
+            exit 1
+          fi
+
+          echo "Checking Android Emulator launcher..."
+          "$EMULATOR_BIN" -version
+          echo "Android Emulator host runtime preflight passed."
 
       - name: Verify session encryption round-trip
         if: ${{ env.LAB_MODE == 'bootstrap' || env.LAB_MODE == 'test' }}
@@ -200,6 +225,12 @@ jobs:
           websockify --web=/usr/share/novnc 6081 127.0.0.1:5900 >/tmp/novnc.log 2>&1 &
           "$ANDROID_HOME/emulator/emulator" -avd TelegramCI -gpu swiftshader_indirect -no-snapshot -no-audio -no-boot-anim -camera-back none -memory 4096 >/tmp/emulator.log 2>&1 &
           echo $! > /tmp/emulator.pid
+          sleep 10
+          if ! kill -0 "$(cat /tmp/emulator.pid)" 2>/dev/null; then
+            echo "::error::Android Emulator exited immediately after launch. Last emulator log lines:"
+            tail -n 160 /tmp/emulator.log || true
+            exit 1
+          fi
           if ! timeout 180s adb wait-for-device; then
             echo "::error::Android Emulator did not register with ADB within 180 seconds."
             adb devices -l || true
