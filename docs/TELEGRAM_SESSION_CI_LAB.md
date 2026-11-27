@@ -63,3 +63,8 @@ A scheduled job accesses the encrypted session cache daily to reduce ordinary Gi
 - The encryption key is derived from the existing signing secrets; do not publish either of those secrets or rotate them without planning a new bootstrap.
 - The remote VNC service binds to localhost on the runner. Cloudflare Quick Tunnel restricts the temporary console to the email entered for the run via a one-time PIN.
 - The encrypted session cache is a convenience for repeatable CI testing, not a guarantee of permanent Telegram authentication.
+
+
+## Emulator executable path troubleshooting (2026-11-27)
+
+The workflow now verifies that the SDK package installed the binary at `$ANDROID_HOME/emulator/emulator`, adds its directory to `GITHUB_PATH`, and invokes that binary by absolute path in both bootstrap and test modes. This avoids relying on the runner's default PATH containing the emulator package directory.
