@@ -185,3 +185,11 @@ This was a separate, concrete bug in `scripts/telegram-lab/remote_console.py`, n
 - Android CI run `#222` (Run ID `46074595683`) was queued when this note was written. Its completion and the next Telegram bootstrap are still required validation; do not claim the protected UI is confirmed visible yet.
 - Run #10 never created a Cloudflare URL and did not open Telegram login or save an authenticated session.
 - Run #10: https://github.com/CybersecurityRahbar/osint-android/actions/runs/46074015993
+
+
+
+### Regression-test result — Android CI #224 (2026-11-28)
+- Android CI #224, Run ID `46074640376`, checked out commit `308d12618b2c56b2aa885f550d5f3c9a4efc3a8f`.
+- The `Validate Telegram CI helper scripts` step completed with `success`. This step installed the pinned `aiohttp==3.11.18`, compiled the proxy and test scripts, and executed `scripts/telegram-lab/test_remote_console.py`; therefore the root-resource path regression tests and legacy route test passed.
+- The overall Android CI run was still in progress at the time of this note (Android runtime parser tests/build remained); do not describe the entire Android CI run as successful based only on the helper-test step.
+- The Telegram Session CI Lab workflow has also been configured to run the same regression test immediately after dependency installation and before emulator creation. A new Telegram bootstrap is still required to validate the real Ubuntu noVNC package, reverse proxy, Cloudflare tunnel, and visible Android desktop end-to-end.
