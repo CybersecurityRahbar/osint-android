@@ -155,3 +155,33 @@ The workflow now passes the argument using the unambiguous `--finish-token="$FIN
 
 The change is committed to `main` as `70142208ba3a9231b7d65e0f342713a7fa8efc00`. It has not yet been validated by a new Telegram bootstrap run. The next run must confirm that the console starts on port 8080, the noVNC reverse-proxy asset checks pass, and the Cloudflare-protected Android screen is actually visible before Telegram login or session saving is attempted.
 - Failed run: https://github.com/CybersecurityRahbar/osint-android/actions/runs/46071534803
+
+
+
+## Bootstrap #10: root-relative noVNC asset paths were stripped by the proxy (2026-11-28)
+
+Run #10 (Run ID `46074015993`, commit `da847fdaa598bd8f73a08cef1d39a37d416abc02`) passed the token parsing point and started the protected console on port 8080. Direct noVNC checks all passed, and x11vnc returned the expected `RFB 003.008` banner. The reverse-proxy check then failed on the second resource:
+
+```
+OK /vnc.html
+noVNC reverse-proxy check failed for /app/ui.js (HTTP 404)
+```
+
+This was a separate, concrete bug in `scripts/telegram-lab/remote_console.py`, not a recurrence of the finish-token problem. The `proxy_root_asset` handler read only `request.match_info["tail"]`. For a route such as `/app/{tail:.*}`, aiohttp sets that tail to `ui.js`, so the proxy requested `http://127.0.0.1:6081/ui.js` instead of the required `/app/ui.js`. The direct noVNC server had the correct file; the proxy dropped its directory prefix and caused the 404.
+
+### Fix applied
+
+- `proxy_root_asset` now forwards `request.path.lstrip("/")`, preserving the complete path such as `app/ui.js`, `core/rfb.js`, `defaults.json`, and `websockify`.
+- Added `scripts/telegram-lab/test_remote_console.py`. It starts a local fake noVNC upstream and verifies that root assets retain their full URL path through the protected proxy, including nested paths, and that the legacy `/novnc/vnc.html` route still maps correctly.
+- Telegram Session CI Lab now runs this regression test immediately after installing its pinned aiohttp dependency and before emulator creation.
+- Android CI also installs the same pinned aiohttp version and runs the regression test plus syntax compilation, so this routing bug is caught on every push without requiring another emulator bootstrap.
+
+### Commits and verification status
+
+- Proxy fix: `aeff39e293ee85dc49c6dc7feaf5ef64dd3f270e`.
+- Regression test: `922bdfc4c071cefd9549628de37c1caa14dfd5aa`.
+- Telegram workflow preflight test: `204bea86ab084231a886ca92e8b6ddab834edb73`.
+- Android CI regression-test integration: `da15a9e3d171fe72a23b23aafbad64b14b6f6283`.
+- Android CI run `#222` (Run ID `46074595683`) was queued when this note was written. Its completion and the next Telegram bootstrap are still required validation; do not claim the protected UI is confirmed visible yet.
+- Run #10 never created a Cloudflare URL and did not open Telegram login or save an authenticated session.
+- Run #10: https://github.com/CybersecurityRahbar/osint-android/actions/runs/46074015993
