@@ -165,7 +165,15 @@ data class TelegramSnapshot(
     val isAuthenticated: Boolean = false,
     val isLoginPage: Boolean = false,
     val hasAppShell: Boolean = false,
-    val authEvidence: String = ""
+    val authEvidence: String = "",
+    val locationHost: String = "",
+    val documentVisibility: String = "",
+    val authRootMatches: Int = 0,
+    val phoneInputMatches: Int = 0,
+    val appShellMatches: Int = 0,
+    val titleMatches: Int = 0,
+    val composerMatches: Int = 0,
+    val editableMatches: Int = 0
 )
 
 data class TelegramDiagnostics(
@@ -174,26 +182,39 @@ data class TelegramDiagnostics(
     val incoming: Int,
     val outgoing: Int,
     val mediaMessages: Int,
-    val lastIssue: String?
+    val lastIssue: String?,
+    val webViewHost: String,
+    val pageProgress: Int,
+    val isLoading: Boolean,
+    val javaScriptEnabled: Boolean,
+    val domReadSucceeded: Boolean
 ) {
     /** Diagnostics intentionally exclude message text, composer contents, cookies and tokens. */
     fun summary(): String = buildString {
-        appendLine("WEBVIEW ATTACHED: $attachedToWindow")
+        appendLine("WEBVIEW ATTACHED: " + attachedToWindow)
+        appendLine("WEBVIEW HOST: " + webViewHost.ifBlank { "غير متاح" })
+        appendLine("WEBVIEW LOAD: progress=" + pageProgress + "% · loading=" + isLoading + " · javascript=" + javaScriptEnabled)
+        appendLine("DOM READ: " + if (domReadSucceeded) "SUCCESS" else "FAILED")
         appendLine(
-            "SAVED SESSION: ${
-                if (snapshot.isAuthenticated) "AUTHENTICATED"
-                else if (snapshot.isLoginPage) "LOGIN SCREEN"
-                else "NOT VERIFIED"
-            }"
+            "SAVED SESSION: " + if (snapshot.isAuthenticated) "AUTHENTICATED"
+            else if (snapshot.isLoginPage) "LOGIN SCREEN" else "NOT VERIFIED"
         )
-        appendLine("PAGE: ${snapshot.readyState} · APP SHELL: ${snapshot.hasAppShell}")
-        appendLine("AUTH EVIDENCE: ${snapshot.authEvidence.ifBlank { "none" }}")
-        appendLine("TARGET ROUTE: ${snapshot.peerRoute.take(40).ifBlank { "غير محدد" }}")
-        appendLine("CHAT TITLE DETECTED: ${snapshot.title.isNotBlank()}")
-        appendLine("COMPOSER: ${snapshot.hasComposer} · SEND CONTROL: ${snapshot.hasSendButton}")
-        appendLine("MESSAGES: ${snapshot.messages.size} (incoming=$incoming / outgoing=$outgoing)")
-        appendLine("MEDIA MESSAGES: $mediaMessages")
-        append("LAST WEBVIEW ISSUE: ${lastIssue ?: "لا يوجد خطأ مسجل"}")
+        appendLine("PAGE: " + snapshot.readyState + " · VISIBILITY: " + snapshot.documentVisibility.ifBlank { "unknown" })
+        appendLine(
+            "SELECTOR COUNTS: auth=" + snapshot.authRootMatches +
+                " · phone=" + snapshot.phoneInputMatches +
+                " · appShell=" + snapshot.appShellMatches +
+                " · title=" + snapshot.titleMatches +
+                " · composer=" + snapshot.composerMatches +
+                " · editable=" + snapshot.editableMatches
+        )
+        appendLine("APP SHELL: " + snapshot.hasAppShell + " · AUTH EVIDENCE: " + snapshot.authEvidence.ifBlank { "none" })
+        appendLine("TARGET ROUTE: " + snapshot.peerRoute.take(40).ifBlank { "غير محدد" })
+        appendLine("CHAT TITLE DETECTED: " + snapshot.title.isNotBlank())
+        appendLine("COMPOSER: " + snapshot.hasComposer + " · SEND CONTROL: " + snapshot.hasSendButton)
+        appendLine("MESSAGES: " + snapshot.messages.size + " (incoming=" + incoming + " / outgoing=" + outgoing + ")")
+        appendLine("MEDIA MESSAGES: " + mediaMessages)
+        append("LAST WEBVIEW ISSUE: " + (lastIssue ?: "لا يوجد خطأ مسجل"))
     }
 }
 
@@ -462,6 +483,17 @@ object TelegramWeb {
                 return null;
               }
 
+              function countVisible(selectors) {
+                var matches = [];
+                selectors.forEach(function(selector) {
+                  var nodes = document.querySelectorAll(selector);
+                  for (var i = 0; i < nodes.length; i++) {
+                    if (visible(nodes[i]) && matches.indexOf(nodes[i]) < 0) matches.push(nodes[i]);
+                  }
+                });
+                return matches.length;
+              }
+
               var titleNode = first([
                 '.chat-info .peer-title',
                 '.MiddleHeader .peer-title',
@@ -522,6 +554,25 @@ object TelegramWeb {
               if (isLoginPage) authEvidence.push('login-screen-visible');
               var isAuthenticated = !isLoginPage &&
                 (hasAppShell || (!!titleNode && !!composer));
+
+              var authRootMatches = countVisible(['#auth-pages', '.auth-pages', '.auth-form', '[class*="authForm" i]']);
+              var phoneInputMatches = countVisible(['#auth-pages input[type="tel"]', '.auth-form input[type="tel"]']);
+              var appShellMatches = countVisible([
+                '#page-chats', '.page-chats', '#main-columns', '#column-left', '.sidebar-left',
+                '.Sidebar', '.left-column', '[class*="sidebar-left" i]',
+                '[class*="LeftColumn" i]', '[class*="chatList" i]', '.chatlist'
+              ]);
+              var titleMatches = countVisible([
+                '.chat-info .peer-title', '.MiddleHeader .peer-title', '.MiddleHeader .fullName',
+                '.MiddleHeader .info .title', '[class*="middleHeader" i] [class*="title" i]',
+                '[class*="chatInfo" i] [class*="title" i]', 'header [class*="title" i]'
+              ]);
+              var composerMatches = countVisible([
+                '.input-message-input[contenteditable="true"]', '#editable-message-text[contenteditable="true"]',
+                '.chat-input [contenteditable="true"]', '[contenteditable="true"][data-placeholder]',
+                'div[contenteditable="true"]', 'textarea'
+              ]);
+              var editableMatches = countVisible(['[contenteditable="true"]', 'textarea']);
 
               var candidates = Array.prototype.slice.call(document.querySelectorAll(
                 '.bubble:not(.service):not(.is-date), [data-mid], [data-message-id], [id^="message-"]'
@@ -599,6 +650,14 @@ object TelegramWeb {
                 isLoginPage:!!isLoginPage,
                 hasAppShell:!!hasAppShell,
                 authEvidence:authEvidence.join(','),
+                locationHost:String(location.host || ''),
+                documentVisibility:String(document.visibilityState || ''),
+                authRootMatches:authRootMatches,
+                phoneInputMatches:phoneInputMatches,
+                appShellMatches:appShellMatches,
+                titleMatches:titleMatches,
+                composerMatches:composerMatches,
+                editableMatches:editableMatches,
                 messages:messages
               });
             })()
@@ -606,6 +665,7 @@ object TelegramWeb {
 
         val raw = evaluate(view, script)
         val root = runCatching { JSONObject(raw) }.getOrElse {
+            lastWebViewIssue = "DOM_SNAPSHOT_JSON_PARSE_FAILED"
             throw IllegalStateException("تعذر تحليل DOM الحالي في Telegram Web.")
         }
         val array = root.optJSONArray("messages") ?: JSONArray()
@@ -647,19 +707,45 @@ object TelegramWeb {
             isAuthenticated = isAuthenticated,
             isLoginPage = isLoginPage,
             hasAppShell = hasAppShell,
-            authEvidence = root.optString("authEvidence")
+            authEvidence = root.optString("authEvidence"),
+            locationHost = root.optString("locationHost"),
+            documentVisibility = root.optString("documentVisibility"),
+            authRootMatches = root.optInt("authRootMatches"),
+            phoneInputMatches = root.optInt("phoneInputMatches"),
+            appShellMatches = root.optInt("appShellMatches"),
+            titleMatches = root.optInt("titleMatches"),
+            composerMatches = root.optInt("composerMatches"),
+            editableMatches = root.optInt("editableMatches")
         )
     }
 
     suspend fun diagnostics(view: WebView): TelegramDiagnostics {
-        val current = snapshot(view)
+        val attempt = runCatching { snapshot(view) }
+        val current = attempt.getOrElse {
+            if (lastWebViewIssue.isNullOrBlank()) lastWebViewIssue = "DOM_SNAPSHOT_FAILED"
+            TelegramSnapshot(
+                url = view.url.orEmpty(),
+                title = "",
+                hasComposer = false,
+                hasSendButton = false,
+                editorText = "",
+                readyState = if (view.progress >= 100) "complete" else "loading",
+                messages = emptyList(),
+                locationHost = runCatching { android.net.Uri.parse(view.url.orEmpty()).host.orEmpty() }.getOrDefault("")
+            )
+        }
         return TelegramDiagnostics(
             snapshot = current,
             attachedToWindow = view.isAttachedToWindow,
             incoming = current.messages.count { !it.outgoing },
             outgoing = current.messages.count { it.outgoing },
             mediaMessages = current.messages.count { it.contentType != "text" || it.mediaCount > 0 },
-            lastIssue = lastWebViewIssue
+            lastIssue = lastWebViewIssue,
+            webViewHost = runCatching { android.net.Uri.parse(view.url.orEmpty()).host.orEmpty() }.getOrDefault(""),
+            pageProgress = view.progress,
+            isLoading = view.progress < 100,
+            javaScriptEnabled = view.settings.javaScriptEnabled,
+            domReadSucceeded = attempt.isSuccess
         )
     }
 
@@ -668,12 +754,16 @@ object TelegramWeb {
             withContext(Dispatchers.Main) {
                 suspendCancellableCoroutine { continuation ->
                     if (!view.isAttachedToWindow) {
+                        lastWebViewIssue = "WEBVIEW_DETACHED_DURING_EVALUATE"
                         continuation.resume("null")
                         return@suspendCancellableCoroutine
                     }
                     runCatching {
                         view.evaluateJavascript(script) { raw ->
                             if (continuation.isActive) {
+                                if (raw.isNullOrBlank() || raw == "null") {
+                                    lastWebViewIssue = "JAVASCRIPT_EMPTY_OR_NULL_CALLBACK"
+                                }
                                 val decoded = runCatching {
                                     JSONTokener(raw ?: "null").nextValue() as? String
                                 }.getOrNull()
@@ -681,6 +771,7 @@ object TelegramWeb {
                             }
                         }
                     }.onFailure {
+                        lastWebViewIssue = "JAVASCRIPT_EVALUATE_EXCEPTION"
                         if (continuation.isActive) continuation.resume("null")
                     }
                 }

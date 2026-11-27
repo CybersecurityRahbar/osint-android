@@ -100,6 +100,12 @@ fun PrivateSourcesSettings(localStore: LocalStore, onSaved: () -> Unit, onBack: 
                         accent = IntelColors.Signal,
                         modifier = Modifier.fillMaxWidth()
                     )
+                    GhostButton(
+                        text = "مختبر Telegram الحي",
+                        onClick = { page = "live_lab" },
+                        accent = IntelColors.Green,
+                        modifier = Modifier.fillMaxWidth()
+                    )
                 }
             }
             "list" -> {
@@ -259,6 +265,9 @@ fun PrivateSourcesSettings(localStore: LocalStore, onSaved: () -> Unit, onBack: 
                     }
                 }
             }
+            }
+            "live_lab" -> {
+                TelegramLiveLabScreen(onBack = { page = "home" })
             }
             "session" -> {
                 GhostButton("رجوع إلى مصادر Telegram", { page = "home" }, accent = IntelColors.TextDim)
