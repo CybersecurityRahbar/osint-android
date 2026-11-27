@@ -1,0 +1,330 @@
+name: Telegram Session CI Lab
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "bootstrap = authorize a test session once; test = run Android WebView echo; refresh = touch encrypted cache"
+        type: choice
+        required: true
+        default: bootstrap
+        options:
+          - bootstrap
+          - test
+          - refresh
+      access_email:
+        description: "Email allowed to open the temporary Android emulator console (bootstrap only)"
+        type: string
+        required: false
+      echo_bot_username:
+        description: "Username of your own test echo bot, without @ (test only)"
+        type: string
+        required: false
+  schedule:
+    - cron: "17 4 * * *"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: telegram-ci-session-lab
+  cancel-in-progress: false
+
+jobs:
+  telegram-lab:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      ANDROID_AVD_HOME: ${ github.workspace }$/.android/avd
+      ANDROID_HOME: /usr/local/lib/android/sdk
+      PREVIEW_KEYSTORE_BASE64: ${ secrets.PREVIEW_KEYSTORE_BASE64 }$
+      PREVIEW_KEYSTORE_PASSWORD: ${ secrets.PREVIEW_KEYSTORE_PASSWORD }$
+      PREVIEW_KEY_ALIAS: osint-preview
+      TELEGRAM_CI_SESSION_KEY: ${ secrets.TELEGRAM_CI_SESSION_KEY }$
+      TELEGRAM_CI_ECHO_BOT_TOKEN: ${ secrets.TELEGRAM_CI_ECHO_BOT_TOKEN }$
+      TELEGRAM_CI_EXPECTED_BOT_USERNAME: ${ inputs.echo_bot_username }$
+      LAB_MODE: ${ inputs.mode || 'refresh' }$
+      ACCESS_EMAIL: ${ inputs.access_email }$
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Restore encrypted emulator session cache
+        if: ${ github.event_name == 'schedule' || inputs.mode == 'test' || inputs.mode == 'refresh' }$
+        uses: actions/cache/restore@v4
+        with:
+          path: .telegram-ci/session-state.enc
+          key: telegram-ci-session-${ github.run_id }$
+          restore-keys: |
+            telegram-ci-session-
+
+      - name: Validate requested operation and required secrets
+        shell: bash
+        run: |
+          set -euo pipefail
+          MODE="$LAB_MODE"
+          if [[ "$GITHUB_EVENT_NAME" == "schedule" ]]; then MODE="refresh"; fi
+          echo "Resolved mode: $MODE"
+          if [[ "$MODE" != "refresh" && ! "$TELEGRAM_CI_SESSION_KEY" =~ ^[0-9a-fA-F]{64}$ ]]; then
+            echo "::error::Add the TELEGRAM_CI_SESSION_KEY Actions secret (64 hex characters)."
+            exit 1
+          fi
+          if [[ "$MODE" == "bootstrap" && -z "$ACCESS_EMAIL" ]]; then
+            echo "::error::Enter access_email when starting bootstrap."
+            exit 1
+          fi
+          if [[ "$MODE" == "test" ]]; then
+            if [[ ! -f .telegram-ci/session-state.enc ]]; then
+              echo "::error::No saved Telegram CI session. Run this workflow in bootstrap mode first."
+              exit 1
+            fi
+            if [[ -z "$TELEGRAM_CI_ECHO_BOT_TOKEN" ]]; then
+              echo "::error::Add the TELEGRAM_CI_ECHO_BOT_TOKEN Actions secret for your own echo bot."
+              exit 1
+            fi
+            if [[ ! "$TELEGRAM_CI_EXPECTED_BOT_USERNAME" =~ ^[A-Za-z0-9_]{5,32}$ ]]; then
+              echo "::error::Enter the echo_bot_username used by the token."
+              exit 1
+            fi
+          fi
+          if [[ "$MODE" == "refresh" && ! -f .telegram-ci/session-state.enc ]]; then
+            echo "::error::No session cache exists yet. Run bootstrap once."
+            exit 1
+          fi
+          echo "LAB_MODE=$MODE" >> "$GITHUB_ENV"
+
+      - name: Refresh cache only
+        if: ${ env.LAB_MODE == 'refresh' }$
+        run: |
+          echo "Encrypted session cache was found and accessed to refresh its retention window."
+          echo "No Telegram login or message test was run in this scheduled maintenance mode."
+
+      - name: Set up JDK 17
+        if: ${ env.LAB_MODE != 'refresh' }$
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle
+        if: ${ env.LAB_MODE != 'refresh' }$
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "9.8.1"
+
+      - name: Set up Android SDK
+        if: ${ env.LAB_MODE != 'refresh' }$
+        uses: android-actions/setup-android@v4
+
+      - name: Install Android and remote desktop dependencies
+        if: ${ env.LAB_MODE != 'refresh' }$
+        shell: bash
+        run: |
+          set -euo pipefail
+          sdkmanager "platforms;android-36" "build-tools;36.0.0" "platform-tools" "emulator" "system-images;android-35;google_apis;x86_64"
+          yes | sdkmanager --licenses >/dev/null || true
+          sudo apt-get update
+          sudo apt-get install -y xvfb x11vnc openbox novnc websockify python3-pip
+          python3 -m pip install --user --break-system-packages "aiohttp==3.11.18" "cryptography==45.0.5"
+          sudo curl -fsSL https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 -o /usr/local/bin/cloudflared
+          sudo chmod +x /usr/local/bin/cloudflared
+          mkdir -p "$ANDROID_AVD_HOME" .telegram-ci
+
+      - name: Create Android emulator definition
+        if: ${ env.LAB_MODE == 'bootstrap' || env.LAB_MODE == 'test' }$
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "no" | avdmanager create avd --force --name TelegramCI --package "system-images;android-35;google_apis;x86_64" --device "pixel_6"
+          mkdir -p "$ANDROID_AVD_HOME/TelegramCI.avd"
+          if [[ "$LAB_MODE" == "test" ]]; then
+            python3 scripts/telegram-lab/session_crypto.py decrypt \
+              --avd-dir "$ANDROID_AVD_HOME/TelegramCI.avd" \
+              --file .telegram-ci/session-state.enc
+          fi
+
+      - name: Prepare stable preview signing
+        if: ${ env.LAB_MODE == 'bootstrap' || env.LAB_MODE == 'test' }$
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "$PREVIEW_KEYSTORE_BASE64" || -z "$PREVIEW_KEYSTORE_PASSWORD" ]]; then
+            echo "::error::Stable preview signing secrets are required to preserve the app identity between emulator runs."
+            exit 1
+          fi
+          KEYSTORE_FILE="$RUNNER_TEMP/osint-workbench-preview.p12"
+          printf '%s' "$PREVIEW_KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE_FILE"
+          chmod 600 "$KEYSTORE_FILE"
+          keytool -list -storetype PKCS12 -keystore "$KEYSTORE_FILE" \
+            -storepass "$PREVIEW_KEYSTORE_PASSWORD" -alias "$PREVIEW_KEY_ALIAS" >/dev/null
+          echo "PREVIEW_KEYSTORE_PATH=$KEYSTORE_FILE" >> "$GITHUB_ENV"
+
+      - name: Build application APK
+        if: ${ env.LAB_MODE == 'bootstrap' || env.LAB_MODE == 'test' }$
+        run: gradle assembleDebug --stacktrace
+
+      - name: Boot emulator with remote display
+        if: ${ env.LAB_MODE == 'bootstrap' }$
+        shell: bash
+        run: |
+          set -euo pipefail
+          Xvfb :99 -screen 0 1365x900x24 -ac +extension GLX +render -noreset >/tmp/xvfb.log 2>&1 &
+          echo $! > /tmp/xvfb.pid
+          export DISPLAY=:99
+          sleep 2
+          openbox >/tmp/openbox.log 2>&1 &
+          x11vnc -display :99 -forever -shared -nopw -listen 127.0.0.1 -rfbport 5900 >/tmp/x11vnc.log 2>&1 &
+          websockify --web=/usr/share/novnc 6081 127.0.0.1:5900 >/tmp/novnc.log 2>&1 &
+          emulator -avd TelegramCI -gpu swiftshader_indirect -no-snapshot -no-audio -no-boot-anim -camera-back none -memory 4096 >/tmp/emulator.log 2>&1 &
+          echo $! > /tmp/emulator.pid
+          adb wait-for-device
+          for i in $(seq 1 180); do
+            if [[ "$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" == "1" ]]; then break; fi
+            sleep 5
+          done
+          [[ "$(adb shell getprop sys.boot_completed | tr -d '\r')" == "1" ]]
+          adb shell settings put global window_animation_scale 0
+          adb shell settings put global transition_animation_scale 0
+          adb shell settings put global animator_duration_scale 0
+          adb install -r app/build/outputs/apk/debug/app-debug.apk
+          adb shell am start -n com.cyberphantom.osintworkbench.preview051/com.cyberphantom.osintworkbench.MainActivity --ez telegram_ci_open_session true
+          echo "Android emulator and app are ready."
+
+      - name: Open protected remote login console
+        if: ${ env.LAB_MODE == 'bootstrap' }$
+        shell: bash
+        run: |
+          set -euo pipefail
+          FINISH_TOKEN="$(python3 -c 'import secrets; print(secrets.token_urlsafe(32))')"
+          export PATH="$HOME/.local/bin:$PATH"
+          python3 scripts/telegram-lab/remote_console.py \
+            --finish-file /tmp/telegram-lab-finished \
+            --finish-token "$FINISH_TOKEN" >/tmp/telegram-console.log 2>&1 &
+          echo $! > /tmp/telegram-console.pid
+          cloudflared tunnel --no-autoupdate --url http://127.0.0.1:8080 --allowed-mail "$ACCESS_EMAIL" >/tmp/cloudflared.log 2>&1 &
+          echo $! > /tmp/cloudflared.pid
+          URL=""
+          for i in $(seq 1 90); do
+            URL="$(grep -Eo 'https://[a-zA-Z0-9.-]+\.trycloudflare\.com' /tmp/cloudflared.log | head -n 1 || true)"
+            if [[ -n "$URL" ]]; then break; fi
+            sleep 2
+          done
+          if [[ -z "$URL" ]]; then
+            echo "::error::Cloudflare protected tunnel did not start. Review tunnel startup logs (no session data is printed)."
+            tail -n 30 /tmp/cloudflared.log
+            exit 1
+          fi
+          {
+            echo "## Telegram CI first-login session setup"
+            echo ""
+            echo "**Protected console:** $URL"
+            echo ""
+            echo "Cloudflare Access will send a one-time PIN to the allowed email address configured for this run."
+            echo ""
+            echo "Open the console, finish Telegram Web login in the Android emulator, wait until chats are visible, then press **حفظ الجلسة وإنهاء**."
+            echo ""
+            echo "Do not share the link or QR code. Use a dedicated Telegram test account, not your personal primary account."
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "Waiting for the explicit save signal."
+          for i in $(seq 1 1800); do
+            if [[ -f /tmp/telegram-lab-finished ]]; then
+              echo "User approved saving the emulator session."
+              break
+            fi
+            sleep 2
+          done
+          if [[ ! -f /tmp/telegram-lab-finished ]]; then
+            echo "::error::Bootstrap window expired before the save button was pressed."
+            exit 1
+          fi
+          kill "$(cat /tmp/cloudflared.pid)" "$(cat /tmp/telegram-console.pid)" 2>/dev/null || true
+
+      - name: Boot emulator for authenticated integration tests
+        if: ${ env.LAB_MODE == 'test' }$
+        shell: bash
+        run: |
+          set -euo pipefail
+          emulator -avd TelegramCI -no-window -gpu swiftshader_indirect -no-snapshot -no-audio -no-boot-anim -camera-back none -memory 4096 >/tmp/emulator.log 2>&1 &
+          echo $! > /tmp/emulator.pid
+          adb wait-for-device
+          for i in $(seq 1 180); do
+            if [[ "$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" == "1" ]]; then break; fi
+            sleep 5
+          done
+          [[ "$(adb shell getprop sys.boot_completed | tr -d '\r')" == "1" ]]
+          adb shell settings put global window_animation_scale 0
+          adb shell settings put global transition_animation_scale 0
+          adb shell settings put global animator_duration_scale 0
+          adb install -r app/build/outputs/apk/debug/app-debug.apk
+
+      - name: Run owner-controlled synthetic echo bot
+        if: ${ env.LAB_MODE == 'test' }$
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/telegram-lab/echo_bot.py >/tmp/telegram-echo-bot.log 2>&1 &
+          echo $! > /tmp/telegram-echo-bot.pid
+          for i in $(seq 1 30); do
+            if grep -q "CI echo bot ready" /tmp/telegram-echo-bot.log; then break; fi
+            sleep 2
+          done
+          if ! grep -q "CI echo bot ready" /tmp/telegram-echo-bot.log; then
+            echo "::error::The echo bot did not initialize. Check its token and username."
+            tail -n 20 /tmp/telegram-echo-bot.log
+            exit 1
+          fi
+
+      - name: Execute live Android WebView round-trip test
+        if: ${ env.LAB_MODE == 'test' }$
+        shell: bash
+        env:
+          ECHO_USERNAME: ${ inputs.echo_bot_username }$
+        run: |
+          set -euo pipefail
+          TEST_VALUE="OSINT_CI_PING_$GITHUB_RUN_ID_$GITHUB_RUN_ATTEMPT"
+          gradle connectedDebugAndroidTest --stacktrace \
+            -PtelegramCiEchoBotUsername="$ECHO_USERNAME" \
+            -PtelegramCiTestValue="$TEST_VALUE" \
+            -PtelegramCiExpectedReplyPrefix="OSINT_CI_ECHO_OK:"
+
+      - name: Stop emulator and echo service
+        if: ${ always() && (env.LAB_MODE == 'bootstrap' || env.LAB_MODE == 'test') }$
+        shell: bash
+        run: |
+          set +e
+          [[ -f /tmp/telegram-echo-bot.pid ]] && kill "$(cat /tmp/telegram-echo-bot.pid)" 2>/dev/null
+          if [[ -f /tmp/emulator.pid ]]; then
+            adb emu kill >/dev/null 2>&1
+            for i in $(seq 1 60); do
+              kill -0 "$(cat /tmp/emulator.pid)" 2>/dev/null || break
+              sleep 2
+            done
+          fi
+
+      - name: Encrypt refreshed emulator session
+        if: ${ success() && (env.LAB_MODE == 'bootstrap' || env.LAB_MODE == 'test') }$
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/telegram-lab/session_crypto.py encrypt \
+            --avd-dir "$ANDROID_AVD_HOME/TelegramCI.avd" \
+            --file .telegram-ci/session-state.enc
+
+      - name: Save encrypted emulator session cache
+        if: ${ success() && (env.LAB_MODE == 'bootstrap' || env.LAB_MODE == 'test') }$
+        uses: actions/cache/save@v4
+        with:
+          path: .telegram-ci/session-state.enc
+          key: telegram-ci-session-${ github.run_id }$
+
+      - name: Upload Android and Telegram integration test reports
+        if: ${ always() && env.LAB_MODE == 'test' }$
+        uses: actions/upload-artifact@v4
+        with:
+          name: telegram-ci-test-reports-${ github.run_id }$
+          path: |
+            app/build/reports/androidTests/connected/debug
+            app/build/outputs/androidTest-results/connected/debug
+            /tmp/telegram-echo-bot.log
+          if-no-files-found: ignore
+          retention-days: 7
