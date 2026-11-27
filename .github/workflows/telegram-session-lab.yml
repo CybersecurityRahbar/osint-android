@@ -121,6 +121,25 @@ jobs:
           sudo chmod +x /usr/local/bin/cloudflared
           mkdir -p "$ANDROID_AVD_HOME" .telegram-ci
 
+      - name: Verify session encryption round-trip
+        if: ${{ env.LAB_MODE == 'bootstrap' || env.LAB_MODE == 'test' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          TEST_DIR="$RUNNER_TEMP/telegram-session-crypto-test"
+          mkdir -p "$TEST_DIR/source" "$TEST_DIR/restored"
+          head -c 65536 /dev/urandom > "$TEST_DIR/source/userdata-qemu.img"
+          cp "$TEST_DIR/source/userdata-qemu.img" "$TEST_DIR/original.img"
+          python3 scripts/telegram-lab/session_crypto.py encrypt \
+            --avd-dir "$TEST_DIR/source" \
+            --file "$TEST_DIR/session.enc"
+          rm "$TEST_DIR/source/userdata-qemu.img"
+          python3 scripts/telegram-lab/session_crypto.py decrypt \
+            --avd-dir "$TEST_DIR/restored" \
+            --file "$TEST_DIR/session.enc"
+          cmp "$TEST_DIR/original.img" "$TEST_DIR/restored/userdata-qemu.img"
+          echo "AES-GCM session archive round-trip verified."
+
       - name: Create Android emulator definition
         if: ${{ env.LAB_MODE == 'bootstrap' || env.LAB_MODE == 'test' }}
         shell: bash
