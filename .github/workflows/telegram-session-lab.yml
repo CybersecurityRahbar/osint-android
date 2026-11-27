@@ -130,6 +130,8 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y xvfb x11vnc openbox novnc websockify python3-pip libpulse0
           python3 -m pip install --user --break-system-packages "aiohttp==3.11.18" "cryptography==45.0.5"
+          python3 -m py_compile scripts/telegram-lab/remote_console.py scripts/telegram-lab/test_remote_console.py
+          python3 scripts/telegram-lab/test_remote_console.py
           sudo curl -fsSL https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 -o /usr/local/bin/cloudflared
           sudo chmod +x /usr/local/bin/cloudflared
           mkdir -p "$ANDROID_AVD_HOME" .telegram-ci
