@@ -118,3 +118,17 @@ This permission change is scoped to the temporary GitHub-hosted runner used by t
 
 After the Telegram Lab #7 diagnosis, Android CI #213 ran on the commit containing the Telegram workflow change and completed successfully. Its existing `Enable KVM for Android emulator` step passed, followed by successful Android runtime parser instrumentation, stable signing, APK build, and artifact upload. This is useful evidence that the GitHub-hosted runner's documented KVM udev setup is available in this repository's Android CI. It does not replace the required Telegram bootstrap check: the separate Telegram workflow must still pass its newly added KVM read/write/open preflight and then boot its GUI emulator.
 - Run: https://github.com/CybersecurityRahbar/osint-android/actions/runs/46067211019
+
+
+## noVNC screen rendering failure and root-path compatibility (2026-11-28)
+
+The first bootstrap that successfully passed KVM and booted Android reached the protected console, but the mobile screenshot showed the noVNC fallback error page, unstyled controls, and broken icon images instead of the Android desktop. This indicates the noVNC web client did not complete its static UI/resource loading; it is not evidence that Telegram itself failed or that the Android APK failed to build.
+
+The runner uses Ubuntu 24.04's packaged noVNC 1.3.x. Its `vnc.html` loads resources such as `app/ui.js`, `app/styles/base.css`, and `core/rfb.js` relative to the page. The protected console previously exposed noVNC only below `/novnc/`. The console now also exposes noVNC at origin-root paths (`/vnc.html`, `/app/*`, `/core/*`, `/vendor/*`, `/images/*`, `/include/*`, `/defaults.json`, `/mandatory.json`, and `/websockify`) and points the iframe to root `/vnc.html` with websocket path `websockify`. The older `/novnc/*` route remains as a compatibility alias.
+
+Before exposing the Cloudflare URL, the workflow now verifies:
+- The key noVNC HTML, JavaScript, CSS, core and defaults files are served successfully by websockify.
+- The x11vnc endpoint returns an RFB protocol banner.
+- Those noVNC resources also return HTTP 200 through the protected-console reverse proxy.
+
+These checks are intended to make static-resource path errors fail inside Actions with the exact URL path, rather than present an unusable black page to the user. The current bootstrap run that exposed the screenshot uses the previous code and cannot be repaired in place; its page should not be used to log in or save a session. The next bootstrap must use the updated `main` commit and pass the new preflight checks before its link is shared.

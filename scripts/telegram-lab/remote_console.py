@@ -39,13 +39,14 @@ iframe{width:100%;height:100%;border:0;background:#05080b}
 </div>
 <div class="screen"><iframe id="vnc" allow="clipboard-read; clipboard-write"></iframe></div>
 <script>
-const url=new URL('/novnc/vnc.html',location.href);
+const url=new URL('/vnc.html',location.href);
 url.searchParams.set('host',location.hostname);
 url.searchParams.set('port',location.port || (location.protocol==='https:'?'443':'80'));
 url.searchParams.set('encrypt',location.protocol==='https:'?'true':'false');
-url.searchParams.set('path','novnc/websockify');
+url.searchParams.set('path','websockify');
 url.searchParams.set('autoconnect','true');
 url.searchParams.set('resize','remote');
+url.searchParams.set('logging','debug');
 document.getElementById('vnc').src=url.toString();
 document.getElementById('finish').addEventListener('click',async()=>{
  const button=document.getElementById('finish');
@@ -85,11 +86,8 @@ def create_app(args: argparse.Namespace) -> web.Application:
     async def status(request: web.Request) -> web.Response:
         return web.json_response({"finished": finished.exists()})
 
-    async def proxy(request: web.Request) -> web.StreamResponse:
-        tail = request.match_info.get("tail", "")
-        # The public console mounts noVNC under /novnc, while websockify serves it at /.
-        # Strip that external prefix for both static assets and the WebSocket endpoint.
-        upstream_tail = tail.removeprefix("novnc/")
+    async def proxy_upstream(request: web.Request, upstream_tail: str) -> web.StreamResponse:
+        upstream_tail = upstream_tail.lstrip("/")
         upstream_url = "http://127.0.0.1:" + str(args.novnc_port) + "/" + upstream_tail
         is_websocket = request.headers.get("Upgrade", "").lower() == "websocket"
 
@@ -165,10 +163,32 @@ def create_app(args: argparse.Namespace) -> web.Application:
                     headers=response_headers,
                 )
 
+    async def proxy_prefixed(request: web.Request) -> web.StreamResponse:
+        tail = request.match_info.get("tail", "")
+        # Preserve compatibility with the old /novnc/* URL path.
+        return await proxy_upstream(request, tail.removeprefix("novnc/"))
+
+    async def proxy_root_asset(request: web.Request) -> web.StreamResponse:
+        # noVNC 1.3.x refers to app/, core/, defaults.json and /websockify
+        # relative to vnc.html. Serve those paths at the origin root as well
+        # as under /novnc/ so both relative and root-relative asset URLs work.
+        tail = request.match_info.get("tail", "")
+        return await proxy_upstream(request, tail)
+
     app.router.add_get("/", home)
     app.router.add_post("/api/finish", finish)
     app.router.add_get("/api/status", status)
-    app.router.add_route("*", "/novnc/{tail:.*}", proxy)
+
+    # Keep the prefixed route for compatibility, but use the root URL for the
+    # iframe. Ubuntu 24.04 ships noVNC 1.3.x, whose app/core assets and
+    # websocket endpoint are safest to expose relative to /vnc.html at root.
+    app.router.add_route("*", "/novnc/{tail:.*}", proxy_prefixed)
+    app.router.add_get("/vnc.html", proxy_root_asset)
+    for asset_prefix in ("app", "core", "vendor", "images", "include"):
+        app.router.add_route("*", f"/{asset_prefix}/{{tail:.*}}", proxy_root_asset)
+    app.router.add_get("/defaults.json", proxy_root_asset)
+    app.router.add_get("/mandatory.json", proxy_root_asset)
+    app.router.add_route("*", "/websockify", proxy_root_asset)
     return app
 
 

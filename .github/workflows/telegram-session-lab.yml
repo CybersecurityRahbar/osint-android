@@ -304,10 +304,53 @@ jobs:
           set -euo pipefail
           FINISH_TOKEN="$(python3 -c 'import secrets; print(secrets.token_urlsafe(32))')"
           export PATH="$HOME/.local/bin:$PATH"
+
+          echo "Checking noVNC static files served directly by websockify..."
+          for path in /vnc.html /app/ui.js /app/styles/base.css /core/rfb.js /defaults.json; do
+            code="$(curl -sS -o /tmp/novnc-direct-check -w '%{http_code}' "http://127.0.0.1:6081$path" || true)"
+            if [[ "$code" != "200" || ! -s /tmp/novnc-direct-check ]]; then
+              echo "::error::noVNC direct static check failed for $path (HTTP $code)."
+              tail -n 80 /tmp/novnc.log || true
+              exit 1
+            fi
+            echo "  OK $path"
+          done
+
+          python3 - <<'PY'
+          import socket
+          with socket.create_connection(("127.0.0.1", 5900), timeout=5) as connection:
+              banner = connection.recv(12)
+          if not banner.startswith(b"RFB "):
+              raise SystemExit(f"x11vnc did not return an RFB protocol banner: {banner!r}")
+          print(f"x11vnc RFB handshake is available: {banner.decode('ascii', errors='replace').strip()}")
+          PY
+
           python3 scripts/telegram-lab/remote_console.py \
             --finish-file /tmp/telegram-lab-finished \
             --finish-token "$FINISH_TOKEN" >/tmp/telegram-console.log 2>&1 &
           echo $! > /tmp/telegram-console.pid
+          for i in $(seq 1 20); do
+            if curl -fsS http://127.0.0.1:8080/api/status >/dev/null; then break; fi
+            sleep 1
+          done
+          if ! curl -fsS http://127.0.0.1:8080/api/status >/dev/null; then
+            echo "::error::Remote console HTTP server did not become ready."
+            cat /tmp/telegram-console.log || true
+            exit 1
+          fi
+
+          echo "Checking noVNC files through the protected-console reverse proxy..."
+          for path in /vnc.html /app/ui.js /app/styles/base.css /core/rfb.js /defaults.json /novnc/vnc.html; do
+            code="$(curl -sS -o /tmp/novnc-proxy-check -w '%{http_code}' "http://127.0.0.1:8080$path" || true)"
+            if [[ "$code" != "200" || ! -s /tmp/novnc-proxy-check ]]; then
+              echo "::error::noVNC reverse-proxy check failed for $path (HTTP $code)."
+              tail -n 80 /tmp/novnc.log || true
+              cat /tmp/telegram-console.log || true
+              exit 1
+            fi
+            echo "  OK $path"
+          done
+
           cloudflared tunnel --no-autoupdate --url http://127.0.0.1:8080 --allowed-mail "$ACCESS_EMAIL" >/tmp/cloudflared.log 2>&1 &
           echo $! > /tmp/cloudflared.pid
           URL=""

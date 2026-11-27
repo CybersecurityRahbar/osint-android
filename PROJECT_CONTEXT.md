@@ -2697,3 +2697,31 @@
 - انتهى التشغيل بالحالة `success`. نجحت خطوة `Enable KVM for Android emulator`، ونجحت اختبارات Android runtime instrumentation، وتجهيز التوقيع، وبناء APK ورفع artifact.
 - هذه نتيجة تحقق مساندة: إعداد KVM الموثق يعمل في بيئة GitHub Actions الخاصة بالمستودع، ولا توجد مشكلة عامة في المحاكي أو build. لكنها لا تختبر خطوة KVM الجديدة داخل Telegram Session CI Lab ولا تثبت بعد أن شاشة GUI/VNC ستقلع في bootstrap؛ يلزم تشغيل Telegram workflow على commit `a433f0d...` لتأكيد ذلك.
 - رابط Android CI #213: https://github.com/CybersecurityRahbar/osint-android/actions/runs/46067211019
+
+
+## 2026-11-28 — تشخيص صفحة noVNC السوداء في Telegram Session CI Lab #8 وإصلاح مسارات الواجهة
+
+### ما أثبته التشغيل #8 والصورة المرفقة
+- التشغيل: `Telegram Session CI Lab #8`، Run ID: `46067930716`، commit وقت التشغيل: `460083b83bae8e7f8f368ff3c8e76024fa327801`.
+- راجعت Jobs: إعداد SDK، تفعيل KVM، فحص المكتبات، التشفير، إنشاء AVD، التوقيع، بناء APK، وخطوة `Boot emulator with remote display` كلها نجحت. الوظيفة انتقلت إلى `Open protected remote login console` وما زالت تنتظر إشارة الحفظ.
+- لذلك فالمشكلة لم تعد في KVM أو تشغيل المحاكي أو APK. الرابط فتح صفحة التعليمات، لكن الجزء المضمن الذي يجب أن يعرض سطح المكتب أظهر شاشة noVNC fallback سوداء مع عناصر تحكم وصور أيقونات مكسورة بدلاً من سطح Android. هذا دليل بصري على أن واجهة noVNC أو ملفاتها الثابتة لم تُحمّل/تُهيّأ بصورة صحيحة؛ لا يوجد دليل أن Telegram قد فشل أو حتى بدأ تسجيل الدخول.
+- لم يضغط المستخدم زر حفظ الجلسة بحسب ما هو معلوم، ولا يجوز اعتبار أي جلسة محفوظة. يجب عدم الضغط على `حفظ الجلسة وإنهاء` من صفحة noVNC المعطوبة؛ ذلك سيغلق المحاكي ويحفظ userdata غير مصادق عليها.
+
+### الإصلاح على مستوى واجهة noVNC والـ reverse proxy
+- Ubuntu 24.04 يوفّر حزمة noVNC 1.3.x؛ صفحة `vnc.html` تعتمد موارد نسبية مثل `app/ui.js`, `app/styles/base.css`, `core/rfb.js`، إضافة إلى صور التحكم. مرجع الحزمة: https://packages.ubuntu.com/en/noble/all/novnc
+- الصفحة كانت تُفتح سابقاً تحت `/novnc/vnc.html`. أضفت تقديم noVNC من جذر النطاق لتجنب أي اعتماد على subpath:
+  - `/vnc.html`
+  - `/app/*`, `/core/*`, `/vendor/*`, `/images/*`, `/include/*`
+  - `/defaults.json`, `/mandatory.json`, `/websockify`
+- غيّرت iframe إلى `/vnc.html` ومسار WebSocket إلى `websockify`، مع تفعيل `logging=debug` داخل noVNC لتسهيل تشخيص أي خطأ اتصال لاحق.
+- أبقيت مسار `/novnc/*` القديم كمسار توافق، ولم ألمس زر الحفظ الآمن أو آلية تشفير الجلسة.
+
+### اختبارات فحص مبكر قبل إظهار رابط Cloudflare
+- يطلب workflow الآن HTTP 200 ومحتوى غير فارغ من ملفات noVNC الرئيسية عبر websockify مباشرة: `/vnc.html`, `/app/ui.js`, `/app/styles/base.css`, `/core/rfb.js`, `/defaults.json`.
+- يتحقق من أن x11vnc يرد بمقدمة بروتوكول RFB على المنفذ 5900.
+- بعد تشغيل remote_console، يعيد اختبارات ملفات noVNC نفسها عبر reverse proxy على 8080، ويختبر المسار القديم أيضاً. عند أي فشل، يوقف إنشاء نفق Cloudflare ويطبع اسم المسار ورمز HTTP وسجلات noVNC/console دون طباعة QR أو بيانات الجلسة.
+- تم تحديث دليل `docs/TELEGRAM_SESSION_CI_LAB.md` وملف `PROJECT_CONTEXT.md` توثيقاً تراكمياً.
+
+### حالة التحقق
+- الإصلاح الجديد لا يمكن أن يغيّر process الموجودة داخل التشغيل #8 لأنها بدأت من commit أقدم. لم يحدث تسجيل دخول أو حفظ جلسة في ذلك التشغيل.
+- لم يتم بعد اختبار bootstrap جديد بالكود الجديد؛ لذلك لا أدعي أن شاشة Android أصبحت ظاهرة حتى ينجح workflow الجديد في فحوص noVNC المباشرة وعبر reverse proxy، ثم تظهر شاشة المحاكي الفعلية.
