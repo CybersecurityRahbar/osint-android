@@ -41,7 +41,28 @@ jobs:
         uses: android-actions/setup-android@v4
 
       - name: Install Android SDK packages
-        run: sdkmanager "platforms;android-36" "build-tools;36.0.0" "platform-tools"
+        run: |
+          sdkmanager "platforms;android-36" "build-tools;36.0.0" "platform-tools" "emulator"
+          sudo apt-get update
+          sudo apt-get install -y libpulse0
+
+      - name: Verify Android Emulator host runtime libraries
+        shell: bash
+        run: |
+          set -euo pipefail
+          QEMU_BIN="$ANDROID_HOME/emulator/qemu/linux-x86_64/qemu-system-x86_64"
+          EMULATOR_BIN="$ANDROID_HOME/emulator/emulator"
+          test -x "$QEMU_BIN"
+          test -x "$EMULATOR_BIN"
+          EMULATOR_LIBRARY_PATH="$ANDROID_HOME/emulator/lib64:$ANDROID_HOME/emulator/lib64/qt/lib:$ANDROID_HOME/emulator/lib64/gles_swiftshader"
+          LDD_OUTPUT="$(LD_LIBRARY_PATH="$EMULATOR_LIBRARY_PATH${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" ldd "$QEMU_BIN" 2>&1 || true)"
+          printf '%s\\n' "$LDD_OUTPUT"
+          if grep -q "not found" <<< "$LDD_OUTPUT"; then
+            echo "::error::QEMU has unresolved dependencies with the official Android Emulator library search paths."
+            exit 1
+          fi
+          "$EMULATOR_BIN" -version
+          echo "Android Emulator host runtime preflight passed."
 
       - name: Validate Telegram CI helper scripts
         run: python3 -m py_compile scripts/telegram-lab/session_crypto.py scripts/telegram-lab/remote_console.py

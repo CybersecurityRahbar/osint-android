@@ -91,3 +91,6 @@ This is intended to turn native runner-image dependency failures into a short, e
 ## Correctly resolving Android Emulator-bundled libraries
 
 The QEMU executable is not a standalone Linux binary. The Android SDK bundles emulator-specific libraries in `emulator/lib64`, `emulator/lib64/qt/lib`, and the software-renderer directory. The normal `emulator` launcher configures `LD_LIBRARY_PATH` for these locations before it starts QEMU. Therefore a raw `ldd qemu-system-x86_64` call without that search path reports SDK-bundled libraries as `not found`, even though they exist in the SDK. The CI preflight now supplies the same SDK library paths to `ldd`; only genuinely unresolved dependencies after that are treated as errors. The system dependency `libpulse0` remains installed separately.
+
+
+The general Android CI workflow also runs this host-runtime preflight now, before its instrumentation emulator tests. This provides an automated check of the same QEMU library search-path setup without requiring a manual Telegram bootstrap to discover basic host dependency issues.
