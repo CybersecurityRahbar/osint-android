@@ -65,7 +65,10 @@ jobs:
           echo "Android Emulator host runtime preflight passed."
 
       - name: Validate Telegram CI helper scripts
-        run: python3 -m py_compile scripts/telegram-lab/session_crypto.py scripts/telegram-lab/remote_console.py
+        run: |
+          python3 -m pip install --user --break-system-packages "aiohttp==3.11.18"
+          python3 -m py_compile scripts/telegram-lab/session_crypto.py scripts/telegram-lab/remote_console.py scripts/telegram-lab/test_remote_console.py
+          python3 scripts/telegram-lab/test_remote_console.py
 
       - name: Run unit tests
         run: gradle testDebugUnitTest --stacktrace
