@@ -2460,3 +2460,50 @@
 - خطوة فحص صياغة سكربتات Python الثلاثة (py_compile) اكتملت بنجاح في هذا التشغيل.
 - عند آخر متابعة كانت اختبارات الوحدات ما تزال قيد التنفيذ؛ لم يُسجل بعد نجاح نهائي للبناء أو اختبارات Android.
 - لا يزال Workflow Telegram Session CI Lab بحاجة إلى تشغيل يدوي من المستخدم بعد إضافة أسرار التشفير وبوت Echo؛ لا يوجد حتى الآن تسجيل دخول حي أو اختبار Telegram مكتمل.
+
+
+## 2026-11-27 — تصحيح تهيئة الجلسة وإلغاء Token البوت واختبار /start بالاسم العام
+
+### تصحيحان بطلب المستخدم
+- لا يريد المستخدم تنفيذ أمر OpenSSL أو إنشاء مفتاح مستقل عبر Termux على الهاتف، ولا يريد إعداد اختبار يعتمد على Bot API Token.
+- أكد المستخدم أن الاختبار المطلوب يستخدم اسم مستخدم Telegram العام للبوت `@tellwhoobot` كما يعمل التطبيق، ويرسل رسالة `/start` فقط ثم يتحقق من وصول رد؛ لا تُرسل أسماء أو أرقام ولا استعلامات بحث شخصية في هذا الاختبار.
+
+### تعديل اشتقاق مفتاح التشفير
+- أُلغي الشرط السابق `TELEGRAM_CI_SESSION_KEY` بالكامل.
+- لا يحتاج المستخدم الآن إلى إنشاء مفتاح جديد أو إضافة Actions secret جديد.
+- يقوم سكربت `session_crypto.py` باشتقاق مفتاح AES-256-GCM داخل GitHub runner باستخدام HKDF-SHA256 من أسرار توقيع APK الموجودة مسبقاً `PREVIEW_KEYSTORE_BASE64` و`PREVIEW_KEYSTORE_PASSWORD`، مع salt وnonce عشوائيين لكل أرشيف.
+- لا يظهر المفتاح المشتق في السجلات ولا يكتب كملف منفصل. لا تزال صورة المحاكي تحفظ مشفرة لأن Cache المستودع العام قد يكون قابلاً للقراءة من أشخاص يملكون وصولاً للمستودع/طلبات PR؛ الذي يخزن هو ciphertext فقط.
+- عند تغيير مفتاح توقيع المعاينة أو كلمة مروره، لن يمكن فك تشفير الجلسة المحفوظة القديمة، ويجب تنفيذ bootstrap جديد.
+- أضيفت خطوة داخل Telegram workflow لاختبار تشفير/فك تشفير صورة محاكي صغيرة قبل بدء إعداد المحاكي الفعلي.
+
+### تعديل اختبار Telegram ليستخدم اسم المستخدم فقط
+- تغير إدخال Workflow من `echo_bot_username` إلى `telegram_bot_username`، وقيمته الافتراضية `tellwhoobot`.
+- أزيل `TELEGRAM_CI_ECHO_BOT_TOKEN` تماماً من Workflow، وحُذف سكربت `scripts/telegram-lab/echo_bot.py` الذي كان يطلب Bot API Token.
+- اختبار Android `TelegramCiLiveAndroidTest` يستعيد WebView المحفوظة، ويتحقق من الجلسة، ويفتح `@tellwhoobot` (أو اسم المستخدم الذي يمرره المستخدم)، ويتأكد من هوية المحادثة، ثم:
+  - يضغط زر Start الأصلي في Telegram إن كان ظاهراً، أو يرسل `/start` مرة واحدة من خلال `TelegramWeb.send` إذا كان محرر الرسائل جاهزاً.
+  - يتحقق من ظهور رسالة `/start` الصادرة.
+  - ينتظر رسالة واردة جديدة من المحادثة.
+  - لا يطبع أو يحفظ نص رد البوت في تقارير CI.
+- الاختبار لا يرسل اسم شخص أو رقم هاتف أو استعلام بحث أو أي بيانات شخصية. نطاقه التحقق من المصادقة، وفتح المحادثة بالـ username، وإرسال /start، والتأكد من الرد.
+- تم تحديث Gradle instrumentation arguments إلى `telegramCiBotUsername`، وتمت إزالة المراجع المتبقية لسكربت echo القديم من فحص Python في Android CI.
+
+### ملفات التغيير ذات الصلة
+- `.github/workflows/telegram-session-lab.yml`
+- `scripts/telegram-lab/session_crypto.py`
+- `scripts/telegram-lab/remote_console.py` (وسيط noVNC)
+- `scripts/telegram-lab/echo_bot.py` (حُذف)
+- `app/src/androidTest/java/com/cyberphantom/osintworkbench/ui/telegram/TelegramCiLiveAndroidTest.kt`
+- `app/build.gradle.kts`
+- `.github/workflows/android.yml`
+- `docs/TELEGRAM_SESSION_CI_LAB.md`
+- `PROJECT_CONTEXT.md`
+
+### المتطلبات اليدوية المتبقية
+- لا توجد حاجة إلى Termux أو إضافة سر تشفير جديد أو إنشاء Bot API Token.
+- يلزم فقط توفر أسرار توقيع المعاينة الحالية في Actions، ثم تشغيل Workflow `Telegram Session CI Lab` بوضع `bootstrap` وإدخال بريد يستقبل PIN، وإكمال تسجيل دخول Telegram داخل المحاكي المعروض.
+- بعد حفظ الجلسة، تشغيل الوضع `test` مع ترك username الافتراضي `tellwhoobot` أو إدخال اسم مستخدم بديل مصرح به.
+
+### حالة التحقق
+- تعديلات /start وتجهيز اشتقاق التشفير رُفعت إلى `main`.
+- لم يُشغّل Workflow المعدل على جلسة Telegram مصادق عليها حتى الآن؛ لا يزال اختبار /start الحي في انتظار bootstrap الأول.
+- نجاح Android CI أو خطوة round-trip المحلية لا يثبت نجاح جلسة Telegram أو رد البوت. لا يُعلن نجاح الاختبار الحي إلا بعد تشغيل وضع `test` والتقاط رد جديد فعلياً.
