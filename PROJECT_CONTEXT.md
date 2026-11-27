@@ -2765,3 +2765,33 @@
 - Commit الإصلاح: `70142208ba3a9231b7d65e0f342713a7fa8efc00`.
 - تم تحديث `docs/TELEGRAM_SESSION_CI_LAB.md` و`PROJECT_CONTEXT.md` بالتشخيص والإصلاح.
 - الحالة الدقيقة: الإصلاح البرمجي موجود على `main`، لكن لم يُشغّل Telegram Session CI Lab بعد هذا التغيير؛ لذلك لم يُثبت بعد ظهور واجهة noVNC أو إنشاء رابط Cloudflare أو نجاح تسجيل الدخول. يمكن بدء تشغيل جديد الآن لاختبار الإصلاح. لا يُعد التشغيل ناجحاً لمجرد أن المحاكي أقلع؛ يجب أن تصبح خطوة `Open protected remote login console` ناجحة ويظهر سطح Android الفعلي.
+
+
+
+## 2026-11-28 — فشل Telegram Session CI Lab #10 بسبب إسقاط بادئة مسار noVNC وإصلاحه
+
+### نتيجة التشغيل الفعلية
+- التشغيل: `Telegram Session CI Lab #10`، Run ID: `46074015993`، Job ID: `140757388113`، commit وقت التشغيل: `da847fdaa598bd8f73a08cef1d39a37d416abc02`.
+- الإصلاح السابق الخاص بتمرير رمز الحماية نجح: بدأ `remote_console.py` وأصبح خادم HTTP على 8080 متاحاً؛ اجتازت خطوة `/api/status`.
+- فحوص noVNC المباشرة نجحت جميعها: `/vnc.html`, `/app/ui.js`, `/app/styles/base.css`, `/core/rfb.js`, `/defaults.json`.
+- فحص x11vnc نجح وأعاد `RFB 003.008`.
+- الفشل الجديد والحاسم كان عند اختبار موارد noVNC عبر reverse proxy:
+  `OK /vnc.html` ثم `noVNC reverse-proxy check failed for /app/ui.js (HTTP 404)`.
+- هذه ليست مشكلة في ملف noVNC أو x11vnc أو المحاكي؛ المصدر المباشر خدم الملف بنجاح. المشكلة في معالج `proxy_root_asset` داخل `scripts/telegram-lab/remote_console.py`: كان يأخذ `request.match_info["tail"]` فقط. في المسار `/app/ui.js` تكون قيمة tail هي `ui.js`، فكان يطلب من المصدر `/ui.js` بدلاً من `/app/ui.js`. لذلك أسقط reverse proxy بادئة المجلد وتسبب في 404.
+- لم يتم إنشاء نفق Cloudflare ولم تظهر واجهة تسجيل الدخول. لم يحصل تسجيل دخول Telegram أو حفظ جلسة في التشغيل #10.
+
+### الإصلاح المطبق
+- تعديل `proxy_root_asset` لتمرير `request.path.lstrip("/")` كاملاً إلى المصدر، وبذلك يحافظ على `app/ui.js`, `app/styles/base.css`, `core/rfb.js`, وبقية مسارات noVNC المتداخلة و`websockify`.
+- إضافة اختبار انحدار فعلي `scripts/telegram-lab/test_remote_console.py` باستخدام aiohttp test servers. يختبر المسارات الجذرية وموارد المجلدات المتداخلة، ويتأكد أيضاً من استمرار عمل المسار القديم `/novnc/vnc.html`.
+- إضافة تنفيذ الاختبار إلى Telegram workflow بعد تثبيت aiohttp وقبل إنشاء المحاكي، كي لا نستهلك تشغيل emulator لاكتشاف أخطاء توجيه أساسية.
+- إضافة الاختبار نفسه إلى Android CI مع تثبيت إصدار aiohttp المطابق وتشغيل py_compile، كي يُكتشف تراجع هذا السلوك في كل push.
+
+### commits والحالة
+- إصلاح proxy: `aeff39e293ee85dc49c6dc7feaf5ef64dd3f270e`.
+- ملف اختبار الانحدار: `922bdfc4c071cefd9549628de37c1caa14dfd5aa`.
+- إضافة اختبار Telegram workflow: `204bea86ab084231a886ca92e8b6ddab834edb73`.
+- إضافة اختبار Android CI: `da15a9e3d171fe72a23b23aafbad64b14b6f6283`.
+- توثيق Telegram lab: `7ec404c205baf8ad37816388c4d7ce8a70150932`.
+- تشغيل Android CI #222، Run ID `46074595683` كان في حالة queued عند تسجيل هذه الملاحظة؛ يجب التحقق من نتيجته قبل الادعاء بأن اختبار الانحدار اجتاز التنفيذ.
+- يجب ألا يبدأ المستخدم Bootstrap جديداً حتى نتحقق أن Android CI #222 نجح في تنفيذ اختبار الانحدار. وبعده يلزم تشغيل Telegram Bootstrap جديد للتأكد من نجاح فحوص المسارات وظهور سطح Android عبر Cloudflare قبل تسجيل الدخول أو حفظ الجلسة.
+- رابط التشغيل الفاشل #10: https://github.com/CybersecurityRahbar/osint-android/actions/runs/46074015993
