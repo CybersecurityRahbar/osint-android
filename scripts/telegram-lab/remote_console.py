@@ -169,11 +169,12 @@ def create_app(args: argparse.Namespace) -> web.Application:
         return await proxy_upstream(request, tail.removeprefix("novnc/"))
 
     async def proxy_root_asset(request: web.Request) -> web.StreamResponse:
-        # noVNC 1.3.x refers to app/, core/, defaults.json and /websockify
-        # relative to vnc.html. Serve those paths at the origin root as well
-        # as under /novnc/ so both relative and root-relative asset URLs work.
-        tail = request.match_info.get("tail", "")
-        return await proxy_upstream(request, tail)
+        # Preserve the complete root-relative URL path when forwarding. The
+        # route captures only the part after /app, /core, etc. in match_info;
+        # forwarding that tail alone would incorrectly request /ui.js instead
+        # of /app/ui.js and make every noVNC asset below those prefixes 404.
+        upstream_path = request.path.lstrip("/")
+        return await proxy_upstream(request, upstream_path)
 
     app.router.add_get("/", home)
     app.router.add_post("/api/finish", finish)
