@@ -86,3 +86,8 @@ The Telegram CI job installs `libpulse0` explicitly. Although the emulator is st
 - Runs the Android Emulator launcher with `-version` as a launch preflight.
 - Checks that the emulator process remains alive shortly after boot is requested and prints its own log immediately if it exits.
 This is intended to turn native runner-image dependency failures into a short, explicit preflight failure instead of a three-minute ADB timeout.
+
+
+## Correctly resolving Android Emulator-bundled libraries
+
+The QEMU executable is not a standalone Linux binary. The Android SDK bundles emulator-specific libraries in `emulator/lib64`, `emulator/lib64/qt/lib`, and the software-renderer directory. The normal `emulator` launcher configures `LD_LIBRARY_PATH` for these locations before it starts QEMU. Therefore a raw `ldd qemu-system-x86_64` call without that search path reports SDK-bundled libraries as `not found`, even though they exist in the SDK. The CI preflight now supplies the same SDK library paths to `ldd`; only genuinely unresolved dependencies after that are treated as errors. The system dependency `libpulse0` remains installed separately.

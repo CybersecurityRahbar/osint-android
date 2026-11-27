@@ -148,10 +148,14 @@ jobs:
           fi
 
           echo "Checking QEMU shared-library dependencies..."
-          LDD_OUTPUT="$(ldd "$QEMU_BIN" 2>&1 || true)"
+          # QEMU ships Android-specific shared objects inside the SDK. The
+          # emulator launcher adds these directories to LD_LIBRARY_PATH before
+          # starting QEMU; reproduce that search path for this standalone ldd check.
+          EMULATOR_LIBRARY_PATH="$ANDROID_HOME/emulator/lib64:$ANDROID_HOME/emulator/lib64/qt/lib:$ANDROID_HOME/emulator/lib64/gles_swiftshader"
+          LDD_OUTPUT="$(LD_LIBRARY_PATH="$EMULATOR_LIBRARY_PATH${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" ldd "$QEMU_BIN" 2>&1 || true)"
           printf '%s\n' "$LDD_OUTPUT"
           if grep -q "not found" <<< "$LDD_OUTPUT"; then
-            echo "::error::Android Emulator has unresolved Linux shared-library dependencies."
+            echo "::error::Android Emulator has unresolved Linux shared-library dependencies after applying the SDK runtime search path."
             exit 1
           fi
 

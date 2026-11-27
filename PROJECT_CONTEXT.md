@@ -2622,3 +2622,28 @@
 - نجحت خطوات اختبارات JVM وAndroid runtime والبناء. هذا يتحقق من أن التعديلات لم تكسر بناء التطبيق، لكنه لا ينفذ Telegram Session Lab ولا يثبت توفر مكتبات QEMU في runner الخاص بالـ bootstrap؛ لهذا أضيفت خطوة preflight مستقلة للمختبر.
 - تم ضبط تنسيق طباعة مخرجات `ldd` في خطوة preflight كي تظهر كل مكتبة في سطر منفصل.
 - التشغيل رقم 4 انتهى بسبب مكتبة النظام `libpulse.so.0` المفقودة، وليس بسبب `ADB` أو APK. الإصلاح الجديد مثبت في `main` لكنه ينتظر إعادة تشغيل bootstrap لإثبات أن QEMU يبدأ فعلياً.
+
+
+## 2026-11-27 — تشخيص فشل Telegram Session CI Lab رقم 5 و6 وتصحيح فحص مكتبات QEMU
+
+### الأدلة من التشغيلين
+- التشغيلان `#5` (Run ID `46064925397`) و`#6` (Run ID `46065119215`) شُغّلا من نفس commit `77faa2b377fb7878e8a3873da6eb20c59d47c5d9`.
+- كلاهما توقف قبل إنشاء AVD أو تشغيل QEMU، داخل خطوة `Verify Android Emulator host runtime libraries`؛ ولذلك لم يصلا إلى خطوة `Boot emulator with remote display`.
+- في سجل التشغيل #5 أصبح `libpulse.so.0` موجوداً وتم حله بنجاح بعد تثبيت `libpulse0`. لكن `ldd` أظهر مجموعة ملفات SDK الداخلية على أنها `not found`، منها `libandroid-emu-tracing.so`, `libandroid-webrtc.so`, `libQt6CoreAndroidEmu.so.6`, `libemugl_common.so`, `libc++.so`, `libprotobuf.so.28.4.0`, و`libabseil_dll.so`.
+- هذه ليست حزم Ubuntu مفقودة. هذه المكتبات مرفقة أصلاً ضمن Android Emulator SDK، وتقع في مجلدات مثل `$ANDROID_HOME/emulator/lib64` و`lib64/qt/lib`. أداة الإطلاق `emulator` تضبط `LD_LIBRARY_PATH` بهذه المجلدات قبل أن تشغّل QEMU. فحص `ldd` المباشر السابق لم يقلّد هذا الإعداد، فأنتج إنذارات كاذبة ثم أوقف الـ workflow رغم وجود الملفات.
+- يوضح مصدر Android الرسمي أن launcher يضيف مجلد `lib64` ومجلد Qt وsoftware-renderer إلى مسار مكتبات النظام قبل بدء المحرك: https://android.googlesource.com/platform/external/qemu/+/master/docs/DEVELOPMENT.TXT
+- ويذكر توثيق ملفات Android emulator المبنية مسبقاً أن launcher يحدّث `LD_LIBRARY_PATH` لتضمين مجلدات `lib`, `lib/qt`, و`lib/gles_swiftshader`: https://android.googlesource.com/platform/external/qemu/+/emu-master-dev/android/docs/PREBUILT-BINARIES.TXT
+
+### التصحيح المطبق
+- الإبقاء على `libpulse0` لأنها كانت مكتبة نظام فعلية مفقودة في التشغيل #4، وأثبت التشغيل #5 أن تثبيتها حلّها.
+- تعديل فحص `ldd` ليستخدم `LD_LIBRARY_PATH` صراحة مع:
+  - `$ANDROID_HOME/emulator/lib64`
+  - `$ANDROID_HOME/emulator/lib64/qt/lib`
+  - `$ANDROID_HOME/emulator/lib64/gles_swiftshader`
+- بعد ذلك لا يُفشل الفحص إلا عند وجود اعتماديات غير محلولة فعلاً بعد إضافة المسارات التي يستخدمها launcher.
+- تحديث `docs/TELEGRAM_SESSION_CI_LAB.md` لشرح الفرق بين مكتبة نظام مفقودة ومكتبات Android SDK الداخلية.
+
+### التحقق والحالة
+- Android CI العام كان ناجحاً في التشغيل #210، لكنه لا يشغّل خطوة preflight الخاصة بـ Telegram lab؛ لذلك لا يعتبر دليلاً على نجاح هذا الفحص.
+- الإصلاح الحالي يصحح فحص اعتماديات Android SDK في التشغيلين #5/#6، لكن لم يُثبت بعد في تشغيل جديد بعد دفع هذا الالتزام.
+- حتى الآن لم يبدأ QEMU في المختبر ولم تظهر شاشة المحاكي أو رابط Cloudflare، ولم يتم تسجيل الدخول أو حفظ جلسة Telegram.
