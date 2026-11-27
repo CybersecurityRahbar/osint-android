@@ -29,7 +29,7 @@ HKDF_INFO = b"osint-android/telegram-ci-session-key/v2"
 
 
 def derive_key(salt: bytes) -> bytes:
-    encoded_keystore = os.environ.get("PREVIEW_KEYSTORE_BASE64", "").strip()
+    encoded_keystore = "".join(os.environ.get("PREVIEW_KEYSTORE_BASE64", "").split())
     keystore_password = os.environ.get("PREVIEW_KEYSTORE_PASSWORD", "")
     if not encoded_keystore or not keystore_password:
         raise SystemExit(
