@@ -2453,3 +2453,10 @@
 ### المراجع التقنية المؤكدة
 - توثيق Cloudflare Quick Tunnels يشرح أن \`--allowed-mail\` يفرض PIN عبر البريد قبل الوصول إلى النفق المؤقت: https://developers.cloudflare.com/tunnel/get-started/quick-tunnels/
 - توثيق GitHub Actions يذكر أن الـ cache الافتراضي قد يُحذف بعد 7 أيام من عدم الوصول إليه وأن الحد الافتراضي لحجم cache هو 10 GB؛ لذلك يوجد تشغيل مجدول يومياً، لكن لا يوجد ضمان تخزين دائم مطلق: https://docs.github.com/en/actions/reference/workflows-and-actions/dependency-caching
+
+
+### تحديث حالة تشغيل GitHub Actions — 2026-11-27
+- تشغيل Android CI رقم 187 مرتبط بالالتزام 10aa3d8ffdd1eaa28119abd2205bab3b13cbaedc.
+- خطوة فحص صياغة سكربتات Python الثلاثة (py_compile) اكتملت بنجاح في هذا التشغيل.
+- عند آخر متابعة كانت اختبارات الوحدات ما تزال قيد التنفيذ؛ لم يُسجل بعد نجاح نهائي للبناء أو اختبارات Android.
+- لا يزال Workflow Telegram Session CI Lab بحاجة إلى تشغيل يدوي من المستخدم بعد إضافة أسرار التشفير وبوت Echo؛ لا يوجد حتى الآن تسجيل دخول حي أو اختبار Telegram مكتمل.
