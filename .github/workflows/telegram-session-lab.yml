@@ -187,12 +187,29 @@ jobs:
           websockify --web=/usr/share/novnc 6081 127.0.0.1:5900 >/tmp/novnc.log 2>&1 &
           emulator -avd TelegramCI -gpu swiftshader_indirect -no-snapshot -no-audio -no-boot-anim -camera-back none -memory 4096 >/tmp/emulator.log 2>&1 &
           echo $! > /tmp/emulator.pid
-          adb wait-for-device
+          if ! timeout 180s adb wait-for-device; then
+            echo "::error::Android Emulator did not register with ADB within 180 seconds."
+            adb devices -l || true
+            tail -n 100 /tmp/emulator.log || true
+            exit 1
+          fi
+          BOOTED=false
           for i in $(seq 1 180); do
-            if [[ "$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" == "1" ]]; then break; fi
+            if [[ "$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" == "1" ]]; then
+              BOOTED=true
+              break
+            fi
+            if (( i % 12 == 0 )); then
+              echo "Still waiting for Android system boot: $((i * 5)) seconds."
+            fi
             sleep 5
           done
-          [[ "$(adb shell getprop sys.boot_completed | tr -d '\r')" == "1" ]]
+          if [[ "$BOOTED" != "true" ]]; then
+            echo "::error::Android Emulator did not finish booting within 15 minutes."
+            adb devices -l || true
+            tail -n 160 /tmp/emulator.log || true
+            exit 1
+          fi
           adb shell settings put global window_animation_scale 0
           adb shell settings put global transition_animation_scale 0
           adb shell settings put global animator_duration_scale 0
@@ -235,6 +252,10 @@ jobs:
             echo ""
             echo "Do not share the link or QR code. Use a dedicated Telegram test account, not your personal primary account."
           } >> "$GITHUB_STEP_SUMMARY"
+          echo ""
+          echo "PROTECTED ANDROID CONSOLE URL: $URL"
+          echo "Open this URL in a browser now. Cloudflare will email the one-time PIN to the allowed address."
+          echo "Do not share the URL or the QR code."
           echo "Waiting for the explicit save signal."
           for i in $(seq 1 1800); do
             if [[ -f /tmp/telegram-lab-finished ]]; then
