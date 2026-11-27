@@ -149,7 +149,7 @@ jobs:
 
           echo "Checking QEMU shared-library dependencies..."
           LDD_OUTPUT="$(ldd "$QEMU_BIN" 2>&1 || true)"
-          printf '%s\\n' "$LDD_OUTPUT"
+          printf '%s\n' "$LDD_OUTPUT"
           if grep -q "not found" <<< "$LDD_OUTPUT"; then
             echo "::error::Android Emulator has unresolved Linux shared-library dependencies."
             exit 1
