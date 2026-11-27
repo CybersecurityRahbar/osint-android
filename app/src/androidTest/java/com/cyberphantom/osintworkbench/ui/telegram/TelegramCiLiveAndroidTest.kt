@@ -62,7 +62,7 @@ class TelegramCiLiveAndroidTest {
                 nameFlow = PrivateSourceFlow.DIRECT_MESSAGE,
                 chatTitle = ""
             )
-            val result = TelegramSessionController(
+            val controller = TelegramSessionController(
                 driver,
                 TelegramStageTimeouts(
                     checkSessionMillis = 25_000L,
@@ -76,19 +76,37 @@ class TelegramCiLiveAndroidTest {
                     replyQuietMillis = 3_000L,
                     replyMinimumMillis = 5_000L
                 )
-            ).search(
+            )
+
+            val nameResult = controller.search(
                 TelegramSearchRequest(
                     bot = bot,
                     kind = PrivateSourceKind.NAME,
                     value = testValue
                 )
             )
-
-            val expected = expectedPrefix + testValue
+            val expectedNameEcho = expectedPrefix + testValue
             assertTrue(
-                "The authenticated WebView completed the request but did not capture the synthetic echo reply. Reply count=" +
-                    result.messageCount,
-                result.messages.any { it.text.contains(expected, ignoreCase = true) }
+                "The direct-message name path did not capture the synthetic echo reply. Reply count=" +
+                    nameResult.messageCount,
+                nameResult.messages.any { it.text.contains(expectedNameEcho, ignoreCase = true) }
+            )
+
+            // This all-zero string is deliberately synthetic and is handled only by the
+            // owner-controlled echo bot; it is not a real person's phone number.
+            val syntheticNumber = "000000000000"
+            val numberResult = controller.search(
+                TelegramSearchRequest(
+                    bot = bot,
+                    kind = PrivateSourceKind.NUMBER,
+                    value = syntheticNumber
+                )
+            )
+            val expectedNumberEcho = expectedPrefix + syntheticNumber
+            assertTrue(
+                "The direct-message number path did not capture the synthetic echo reply. Reply count=" +
+                    numberResult.messageCount,
+                numberResult.messages.any { it.text.contains(expectedNumberEcho, ignoreCase = true) }
             )
         } finally {
             scenario.close()

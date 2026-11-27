@@ -62,7 +62,7 @@ def main() -> None:
                 # Only private, synthetic CI markers are echoed. All other messages are ignored.
                 if chat.get("type") != "private" or not isinstance(text, str):
                     continue
-                if not text.startswith("OSINT_CI_PING_") or len(text) > 100:
+                if not (text.startswith("OSINT_CI_PING_") or text == "000000000000") or len(text) > 100:
                     continue
 
                 call(
