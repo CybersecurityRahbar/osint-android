@@ -2795,3 +2795,11 @@
 - تشغيل Android CI #222، Run ID `46074595683` كان في حالة queued عند تسجيل هذه الملاحظة؛ يجب التحقق من نتيجته قبل الادعاء بأن اختبار الانحدار اجتاز التنفيذ.
 - يجب ألا يبدأ المستخدم Bootstrap جديداً حتى نتحقق أن Android CI #222 نجح في تنفيذ اختبار الانحدار. وبعده يلزم تشغيل Telegram Bootstrap جديد للتأكد من نجاح فحوص المسارات وظهور سطح Android عبر Cloudflare قبل تسجيل الدخول أو حفظ الجلسة.
 - رابط التشغيل الفاشل #10: https://github.com/CybersecurityRahbar/osint-android/actions/runs/46074015993
+
+
+
+### تحقق اختبار الانحدار لإصلاح noVNC — Android CI #224
+- التشغيل: Android CI #224، Run ID `46074640376`، commit المفحوص `308d12618b2c56b2aa885f550d5f3c9a4efc3a8f`.
+- خطوة `Validate Telegram CI helper scripts` انتهت بنجاح. هذه الخطوة تثبت aiohttp بالإصدار المحدد، ثم تشغّل `py_compile` على كود proxy واختباراته، ثم تنفذ `scripts/telegram-lab/test_remote_console.py`. نجاحها يعني اجتياز اختبارات المسارات الكاملة للأصول الجذرية والمسارات المتداخلة، واختبار توافق `/novnc/vnc.html`.
+- لم يكن Android CI #224 بأكمله قد انتهى عند كتابة هذه الملاحظة؛ اختبار runtime parser وبناء APK كانا لا يزالان قيد التنفيذ. لذلك لا نسجل نجاح workflow كاملاً.
+- Telegram Session CI Lab يشغّل الآن اختبار الانحدار نفسه بعد تثبيت aiohttp وقبل إنشاء المحاكي. لا يزال مطلوباً Bootstrap حقيقي جديد للتأكد من noVNC على Ubuntu، والـ reverse proxy، ونفق Cloudflare، وظهور شاشة Android.
