@@ -327,7 +327,7 @@ jobs:
 
           python3 scripts/telegram-lab/remote_console.py \
             --finish-file /tmp/telegram-lab-finished \
-            --finish-token "$FINISH_TOKEN" >/tmp/telegram-console.log 2>&1 &
+            --finish-token="$FINISH_TOKEN" >/tmp/telegram-console.log 2>&1 &
           echo $! > /tmp/telegram-console.pid
           for i in $(seq 1 20); do
             if curl -fsS http://127.0.0.1:8080/api/status >/dev/null; then break; fi
