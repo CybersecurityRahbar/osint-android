@@ -87,7 +87,10 @@ def create_app(args: argparse.Namespace) -> web.Application:
 
     async def proxy(request: web.Request) -> web.StreamResponse:
         tail = request.match_info.get("tail", "")
-        upstream_url = "http://127.0.0.1:" + str(args.novnc_port) + "/" + tail
+        # The public console mounts noVNC under /novnc, while websockify serves it at /.
+        # Strip that external prefix for both static assets and the WebSocket endpoint.
+        upstream_tail = tail.removeprefix("novnc/")
+        upstream_url = "http://127.0.0.1:" + str(args.novnc_port) + "/" + upstream_tail
         is_websocket = request.headers.get("Upgrade", "").lower() == "websocket"
 
         if is_websocket:
