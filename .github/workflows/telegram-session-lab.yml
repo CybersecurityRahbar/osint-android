@@ -35,26 +35,26 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 90
     env:
-      ANDROID_AVD_HOME: ${ github.workspace }$/.android/avd
+      ANDROID_AVD_HOME: ${{ github.workspace }}/.android/avd
       ANDROID_HOME: /usr/local/lib/android/sdk
-      PREVIEW_KEYSTORE_BASE64: ${ secrets.PREVIEW_KEYSTORE_BASE64 }$
-      PREVIEW_KEYSTORE_PASSWORD: ${ secrets.PREVIEW_KEYSTORE_PASSWORD }$
+      PREVIEW_KEYSTORE_BASE64: ${{ secrets.PREVIEW_KEYSTORE_BASE64 }}
+      PREVIEW_KEYSTORE_PASSWORD: ${{ secrets.PREVIEW_KEYSTORE_PASSWORD }}
       PREVIEW_KEY_ALIAS: osint-preview
-      TELEGRAM_CI_SESSION_KEY: ${ secrets.TELEGRAM_CI_SESSION_KEY }$
-      TELEGRAM_CI_ECHO_BOT_TOKEN: ${ secrets.TELEGRAM_CI_ECHO_BOT_TOKEN }$
-      TELEGRAM_CI_EXPECTED_BOT_USERNAME: ${ inputs.echo_bot_username }$
-      LAB_MODE: ${ inputs.mode || 'refresh' }$
-      ACCESS_EMAIL: ${ inputs.access_email }$
+      TELEGRAM_CI_SESSION_KEY: ${{ secrets.TELEGRAM_CI_SESSION_KEY }}
+      TELEGRAM_CI_ECHO_BOT_TOKEN: ${{ secrets.TELEGRAM_CI_ECHO_BOT_TOKEN }}
+      TELEGRAM_CI_EXPECTED_BOT_USERNAME: ${{ inputs.echo_bot_username }}
+      LAB_MODE: ${{ inputs.mode || 'refresh' }}
+      ACCESS_EMAIL: ${{ inputs.access_email }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
       - name: Restore encrypted emulator session cache
-        if: ${ github.event_name == 'schedule' || inputs.mode == 'test' || inputs.mode == 'refresh' }$
+        if: ${{ github.event_name == 'schedule' || inputs.mode == 'test' || inputs.mode == 'refresh' }}
         uses: actions/cache/restore@v4
         with:
           path: .telegram-ci/session-state.enc
-          key: telegram-ci-session-${ github.run_id }$
+          key: telegram-ci-session-${{ github.run_id }}
           restore-keys: |
             telegram-ci-session-
 
@@ -94,30 +94,30 @@ jobs:
           echo "LAB_MODE=$MODE" >> "$GITHUB_ENV"
 
       - name: Refresh cache only
-        if: ${ env.LAB_MODE == 'refresh' }$
+        if: ${{ env.LAB_MODE == 'refresh' }}
         run: |
           echo "Encrypted session cache was found and accessed to refresh its retention window."
           echo "No Telegram login or message test was run in this scheduled maintenance mode."
 
       - name: Set up JDK 17
-        if: ${ env.LAB_MODE != 'refresh' }$
+        if: ${{ env.LAB_MODE != 'refresh' }}
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: "17"
 
       - name: Set up Gradle
-        if: ${ env.LAB_MODE != 'refresh' }$
+        if: ${{ env.LAB_MODE != 'refresh' }}
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "9.8.1"
 
       - name: Set up Android SDK
-        if: ${ env.LAB_MODE != 'refresh' }$
+        if: ${{ env.LAB_MODE != 'refresh' }}
         uses: android-actions/setup-android@v4
 
       - name: Install Android and remote desktop dependencies
-        if: ${ env.LAB_MODE != 'refresh' }$
+        if: ${{ env.LAB_MODE != 'refresh' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -131,7 +131,7 @@ jobs:
           mkdir -p "$ANDROID_AVD_HOME" .telegram-ci
 
       - name: Create Android emulator definition
-        if: ${ env.LAB_MODE == 'bootstrap' || env.LAB_MODE == 'test' }$
+        if: ${{ env.LAB_MODE == 'bootstrap' || env.LAB_MODE == 'test' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -144,7 +144,7 @@ jobs:
           fi
 
       - name: Prepare stable preview signing
-        if: ${ env.LAB_MODE == 'bootstrap' || env.LAB_MODE == 'test' }$
+        if: ${{ env.LAB_MODE == 'bootstrap' || env.LAB_MODE == 'test' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -160,11 +160,11 @@ jobs:
           echo "PREVIEW_KEYSTORE_PATH=$KEYSTORE_FILE" >> "$GITHUB_ENV"
 
       - name: Build application APK
-        if: ${ env.LAB_MODE == 'bootstrap' || env.LAB_MODE == 'test' }$
+        if: ${{ env.LAB_MODE == 'bootstrap' || env.LAB_MODE == 'test' }}
         run: gradle assembleDebug --stacktrace
 
       - name: Boot emulator with remote display
-        if: ${ env.LAB_MODE == 'bootstrap' }$
+        if: ${{ env.LAB_MODE == 'bootstrap' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -191,7 +191,7 @@ jobs:
           echo "Android emulator and app are ready."
 
       - name: Open protected remote login console
-        if: ${ env.LAB_MODE == 'bootstrap' }$
+        if: ${{ env.LAB_MODE == 'bootstrap' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -240,7 +240,7 @@ jobs:
           kill "$(cat /tmp/cloudflared.pid)" "$(cat /tmp/telegram-console.pid)" 2>/dev/null || true
 
       - name: Boot emulator for authenticated integration tests
-        if: ${ env.LAB_MODE == 'test' }$
+        if: ${{ env.LAB_MODE == 'test' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -258,7 +258,7 @@ jobs:
           adb install -r app/build/outputs/apk/debug/app-debug.apk
 
       - name: Run owner-controlled synthetic echo bot
-        if: ${ env.LAB_MODE == 'test' }$
+        if: ${{ env.LAB_MODE == 'test' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -275,20 +275,20 @@ jobs:
           fi
 
       - name: Execute live Android WebView round-trip test
-        if: ${ env.LAB_MODE == 'test' }$
+        if: ${{ env.LAB_MODE == 'test' }}
         shell: bash
         env:
-          ECHO_USERNAME: ${ inputs.echo_bot_username }$
+          ECHO_USERNAME: ${{ inputs.echo_bot_username }}
         run: |
           set -euo pipefail
-          TEST_VALUE="OSINT_CI_PING_$GITHUB_RUN_ID_$GITHUB_RUN_ATTEMPT"
+          TEST_VALUE="OSINT_CI_PING_${GITHUB_RUN_ID}_${GITHUB_RUN_ATTEMPT}"
           gradle connectedDebugAndroidTest --stacktrace \
             -PtelegramCiEchoBotUsername="$ECHO_USERNAME" \
             -PtelegramCiTestValue="$TEST_VALUE" \
             -PtelegramCiExpectedReplyPrefix="OSINT_CI_ECHO_OK:"
 
       - name: Stop emulator and echo service
-        if: ${ always() && (env.LAB_MODE == 'bootstrap' || env.LAB_MODE == 'test') }$
+        if: ${{ always() && (env.LAB_MODE == 'bootstrap' || env.LAB_MODE == 'test') }}
         shell: bash
         run: |
           set +e
@@ -302,7 +302,7 @@ jobs:
           fi
 
       - name: Encrypt refreshed emulator session
-        if: ${ success() && (env.LAB_MODE == 'bootstrap' || env.LAB_MODE == 'test') }$
+        if: ${{ success() && (env.LAB_MODE == 'bootstrap' || env.LAB_MODE == 'test') }}
         shell: bash
         run: |
           set -euo pipefail
@@ -311,17 +311,17 @@ jobs:
             --file .telegram-ci/session-state.enc
 
       - name: Save encrypted emulator session cache
-        if: ${ success() && (env.LAB_MODE == 'bootstrap' || env.LAB_MODE == 'test') }$
+        if: ${{ success() && (env.LAB_MODE == 'bootstrap' || env.LAB_MODE == 'test') }}
         uses: actions/cache/save@v4
         with:
           path: .telegram-ci/session-state.enc
-          key: telegram-ci-session-${ github.run_id }$
+          key: telegram-ci-session-${{ github.run_id }}
 
       - name: Upload Android and Telegram integration test reports
-        if: ${ always() && env.LAB_MODE == 'test' }$
+        if: ${{ always() && env.LAB_MODE == 'test' }}
         uses: actions/upload-artifact@v4
         with:
-          name: telegram-ci-test-reports-${ github.run_id }$
+          name: telegram-ci-test-reports-${{ github.run_id }}
           path: |
             app/build/reports/androidTests/connected/debug
             app/build/outputs/androidTest-results/connected/debug
