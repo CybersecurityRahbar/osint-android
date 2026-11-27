@@ -2582,3 +2582,12 @@
 - الإصلاح أعلاه دُفع كالتزام واحد إلى `main` ويجب مراجعة تشغيل Android CI الناتج عنه قبل إعادة تشغيل Telegram Session Lab.
 - فشل Telegram Session Lab رقم 3 مستقل وسببه `emulator: command not found`؛ إصلاح مسار المحاكي موجود في commit سابق، لكنه لا يعالج فشل الاختبارين في Android CI العام.
 - لم يحدث تسجيل دخول Telegram أو حفظ جلسة حتى هذه المرحلة. لا تطلب من المستخدم تشغيل Lab من جديد حتى ينجح Android CI بعد الإصلاح.
+
+
+### نتيجة التحقق بعد إصلاح Android CI — 2026-11-27
+- تشغيل Android CI رقم `208`، Run ID `46061816354`، commit `09cd539a961e99985718bc3719afdaed49dd78f0` انتهى بالحالة `success`.
+- جميع خطوات التشغيل انتهت بنجاح، بما في ذلك `Run unit tests` و`Run Android runtime parser tests` و`Build debug APK` ورفع APK المعاينة الموقّع بالمفتاح الثابت.
+- تمت مراجعة artifact `android-test-reports` نفسه وقراءة JUnit XML: ثمانية اختبارات Android نُفذت، صفر failures، صفر errors، صفر skipped. لم يعد اختبار Telegram الحي ولا اختبار Compose المعطل يظهران في هذه المجموعة.
+- تم رفع artifact باسم `osint-workbench-v0.12.3-preview-apk`، رقم artifact `15228254319`، وحجمه 20,178,893 bytes، مع نجاح خطوة التوقيع الثابت.
+- رابط التشغيل الناجح: https://github.com/CybersecurityRahbar/osint-android/actions/runs/46061816354
+- هذه النتيجة تؤكد أن Android CI العام أصبح سليماً في هذا الالتزام وأن APK بُني ووُقع ورُفع؛ لكنها لا تثبت بعد نجاح محاكي Telegram Session CI Lab أو تسجيل الدخول/حفظ الجلسة. يجب إجراء bootstrap منفصل الآن باستخدام النسخة التي تستدعي emulator بمساره المطلق.
