@@ -20,14 +20,8 @@ android {
         versionCode = 21
         versionName = "0.12.3"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        providers.gradleProperty("telegramCiEchoBotUsername").orNull?.let {
-            testInstrumentationRunnerArguments["telegramCiEchoBotUsername"] = it
-        }
-        providers.gradleProperty("telegramCiTestValue").orNull?.let {
-            testInstrumentationRunnerArguments["telegramCiTestValue"] = it
-        }
-        providers.gradleProperty("telegramCiExpectedReplyPrefix").orNull?.let {
-            testInstrumentationRunnerArguments["telegramCiExpectedReplyPrefix"] = it
+        providers.gradleProperty("telegramCiBotUsername").orNull?.let {
+            testInstrumentationRunnerArguments["telegramCiBotUsername"] = it
         }
     }
 
