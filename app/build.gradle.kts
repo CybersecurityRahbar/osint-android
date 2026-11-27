@@ -7,6 +7,11 @@ val previewKeystorePath = providers.environmentVariable("PREVIEW_KEYSTORE_PATH")
 val previewKeystorePassword = providers.environmentVariable("PREVIEW_KEYSTORE_PASSWORD").orNull?.takeIf { it.isNotBlank() }
 val previewKeyAlias = providers.environmentVariable("PREVIEW_KEY_ALIAS").orNull?.takeIf { it.isNotBlank() } ?: "osint-preview"
 val hasStablePreviewSigning = previewKeystorePath != null && previewKeystorePassword != null
+val telegramCiBotUsername = providers.gradleProperty("telegramCiBotUsername")
+    .orNull
+    ?.trim()
+    ?.removePrefix("@")
+    ?.takeIf { it.isNotEmpty() }
 
 android {
     namespace = "com.cyberphantom.osintworkbench"
@@ -20,8 +25,21 @@ android {
         versionCode = 21
         versionName = "0.12.3"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        providers.gradleProperty("telegramCiBotUsername").orNull?.let {
-            testInstrumentationRunnerArguments["telegramCiBotUsername"] = it
+        if (telegramCiBotUsername == null) {
+            // The default Android CI must not run authenticated/live Telegram tests.
+            // The Compose navigation test below is intentionally disabled pending a stable UI harness.
+            testInstrumentationRunnerArguments["notAnnotation"] =
+                "com.cyberphantom.osintworkbench.ui.telegram.RequiresTelegramSession"
+            testInstrumentationRunnerArguments["notClass"] =
+                "com.cyberphantom.osintworkbench.ui.ThemesSettingsNavigationAndroidTest"
+        } else {
+            require(telegramCiBotUsername.matches(Regex("[A-Za-z0-9_]{5,32}"))) {
+                "telegramCiBotUsername must be a valid Telegram bot username."
+            }
+            // The dedicated Telegram Session workflow runs only this authenticated E2E class.
+            testInstrumentationRunnerArguments["class"] =
+                "com.cyberphantom.osintworkbench.ui.telegram.TelegramCiLiveAndroidTest"
+            testInstrumentationRunnerArguments["telegramCiBotUsername"] = telegramCiBotUsername
         }
     }
 

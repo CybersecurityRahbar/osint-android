@@ -2556,3 +2556,29 @@
 ### الحالة التالية
 - يجب تشغيل Workflow من جديد بوضع `bootstrap` على `main` بعد هذا الإصلاح.
 - نجاح هذا التصحيح لم يُثبت بعد على تشغيل جديد؛ لا يبدأ تسجيل الدخول إلا بعد أن تصبح خطوة إقلاع المحاكي ناجحة وتظهر خطوة `Open protected remote login console` مع رابط `PROTECTED ANDROID CONSOLE URL`.
+
+
+## 2026-11-27 — تشخيص فشل Android CI رقم 207 وإصلاح فصل اختبارات Telegram الحية
+
+### الفرق بين فشل Android CI وفشل Telegram Session CI Lab
+- كان المستخدم محقاً في أن هناك فشلاً مستقلاً في Workflow الأساسي `Android CI` قبل مرحلة تشغيل Telegram Session Lab. يجب عدم الخلط بين هذين المسارين.
+- راجعت Android CI رقم `207`، Run ID `46060527337`، على commit `d977996f59884add42a8b49ac73e38d4b70adcde`.
+- خطوات إعداد JDK/Gradle/SDK، وفحص Python، واختبارات JVM المحلية كلها نجحت.
+- مهمة Android instrumentation شغلت 10 اختبارات، ونتيجة XML من artifact `android-test-reports` سجلت فشلين:
+  1. `TelegramCiLiveAndroidTest.retainedTelegramWebViewCanStartConfiguredBotAndReceiveReply`: لم يكن وسيط `telegramCiBotUsername` موجوداً في Android CI العام، ففشل الاختبار فوراً عند Assertion في السطر 34. هذا الاختبار الحي خاص بمختبر Telegram ولا ينبغي تشغيله في CI العام.
+  2. `ThemesSettingsNavigationAndroidTest.themesSettingsPageOpensWithoutNestedScrollCrash`: ملف الاختبار يحتوي `@Ignore`، ونتيجة Android Test Platform داخل artifact سجلته كـ `Test ignored`/ `TestAbortedException`، لكن XML أدرجه ضمن failures، ما تسبب في فشل Gradle. لم تكن هذه نتيجة فشل فعلي في شاشة الثيمات؛ بل حالة اختبار معطل تم الإبلاغ عنها كفشل من مسار الاختبار الحالي.
+- بقية الاختبارات الثمانية في ذلك التشغيل اجتازت؛ بما فيها اختبارات إعداد مفاتيح API، حفظ الثيمات، محلل RSS/Atom، واحتفاظ WebView Telegram.
+
+### إصلاح فصل مجموعات الاختبار في app/build.gradle.kts
+- عند تشغيل `connectedDebugAndroidTest` دون خاصية `telegramCiBotUsername`، يضيف Gradle مرشحات AndroidJUnitRunner:
+  - `notAnnotation=...RequiresTelegramSession` لاستبعاد اختبار Telegram الحي.
+  - `notClass=...ThemesSettingsNavigationAndroidTest` لاستبعاد اختبار Compose الذي تم تعطيله مسبقاً بـ `@Ignore`.
+- عند تمرير `-PtelegramCiBotUsername=<username>` من Telegram Session CI Lab، يضبط Gradle مرشح `class` على `TelegramCiLiveAndroidTest` فقط ويمرر اسم المستخدم كـ instrumentation argument.
+- أضيف marker annotation وقت التشغيل `RequiresTelegramSession` على الاختبار الحي، حتى لا تشغله اختبارات Android العامة بالخطأ.
+- لم يتم حذف الاختبارات ولا تغيير كود تشغيل التطبيق؛ التعديل فقط يحدد أي suite يشغل أي اختبار.
+
+### نطاق التحقق وما زال منتظراً
+- يثبت run #207 أن APK وملفات الاختبار compile/package بنجاح قبل فشل مهمة الاختبارات؛ لا يجوز وصفه بأنه فشل تجميع Kotlin/Android.
+- الإصلاح أعلاه دُفع كالتزام واحد إلى `main` ويجب مراجعة تشغيل Android CI الناتج عنه قبل إعادة تشغيل Telegram Session Lab.
+- فشل Telegram Session Lab رقم 3 مستقل وسببه `emulator: command not found`؛ إصلاح مسار المحاكي موجود في commit سابق، لكنه لا يعالج فشل الاختبارين في Android CI العام.
+- لم يحدث تسجيل دخول Telegram أو حفظ جلسة حتى هذه المرحلة. لا تطلب من المستخدم تشغيل Lab من جديد حتى ينجح Android CI بعد الإصلاح.

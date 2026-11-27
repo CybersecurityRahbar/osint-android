@@ -21,8 +21,13 @@ import org.junit.runner.RunWith
  * sends the same command), and confirms that a new bot response arrives.
  * No Bot API token or personal lookup value is used by this test.
  */
+@Retention(AnnotationRetention.RUNTIME)
+@Target(AnnotationTarget.FUNCTION)
+annotation class RequiresTelegramSession
+
 @RunWith(AndroidJUnit4::class)
 class TelegramCiLiveAndroidTest {
+    @RequiresTelegramSession
     @Test
     fun retainedTelegramWebViewCanStartConfiguredBotAndReceiveReply() = runBlocking {
         val arguments = InstrumentationRegistry.getArguments()

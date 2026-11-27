@@ -68,3 +68,12 @@ A scheduled job accesses the encrypted session cache daily to reduce ordinary Gi
 ## Emulator executable path troubleshooting (2026-11-27)
 
 The workflow now verifies that the SDK package installed the binary at `$ANDROID_HOME/emulator/emulator`, adds its directory to `GITHUB_PATH`, and invokes that binary by absolute path in both bootstrap and test modes. This avoids relying on the runner's default PATH containing the emulator package directory.
+
+
+## Separation between general Android CI and the authenticated Telegram test
+
+The normal `Android CI` workflow runs unit tests and the non-live Android instrumentation suite. It explicitly excludes:
+- `ThemesSettingsNavigationAndroidTest`, because its Compose scroll test remains intentionally disabled until the UI test harness is stabilized.
+- The test method marked `RequiresTelegramSession`, because it needs a restored logged-in Telegram WebView and an explicit bot username.
+
+The dedicated `Telegram Session CI Lab` passes `-PtelegramCiBotUsername=...`. Gradle then narrows instrumentation to `TelegramCiLiveAndroidTest` only and passes that username to the test runner. This prevents ordinary Android CI from attempting a live Telegram operation without a session or a bot configuration.
