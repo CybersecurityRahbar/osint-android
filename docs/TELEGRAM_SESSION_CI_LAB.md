@@ -138,3 +138,20 @@ These checks are intended to make static-resource path errors fail inside Action
 
 Android CI #214 completed successfully on commit `d94c0d712d0b3cffe6d0d0db9f9724b898e9d91a`. In particular, `Validate Telegram CI helper scripts` passed, confirming that the modified `remote_console.py` parses/compiles, and the general Android tests, signing and APK build all passed. This does not execute the new noVNC HTTP asset probes because those belong to the Telegram bootstrap workflow's protected-console step. The definitive test remains a new Telegram bootstrap on this commit.
 - Run: https://github.com/CybersecurityRahbar/osint-android/actions/runs/46070705884
+
+
+
+## Bootstrap console token argument parsing fix (2026-11-28)
+
+Telegram Session CI Lab run #9 (Run ID `46071534803`) booted the Android emulator successfully, but the protected console process exited before opening port 8080. Its log reported:
+
+```
+remote_console.py: error: argument --finish-token: expected one argument
+```
+
+The workflow creates the finish token with Python's `secrets.token_urlsafe(32)`. Such a token may begin with a hyphen; when passed as a separate argument after `--finish-token`, argparse can interpret it as another option instead of the token value.
+
+The workflow now passes the argument using the unambiguous `--finish-token="$FINISH_TOKEN"` form. This preserves the randomly generated token and the existing protected finish flow; no token is printed to logs. It fixes the argument-parsing failure that prevented the HTTP console from starting.
+
+The change is committed to `main` as `70142208ba3a9231b7d65e0f342713a7fa8efc00`. It has not yet been validated by a new Telegram bootstrap run. The next run must confirm that the console starts on port 8080, the noVNC reverse-proxy asset checks pass, and the Cloudflare-protected Android screen is actually visible before Telegram login or session saving is attempted.
+- Failed run: https://github.com/CybersecurityRahbar/osint-android/actions/runs/46071534803
