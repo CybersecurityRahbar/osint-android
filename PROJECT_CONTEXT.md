@@ -2388,3 +2388,42 @@
 
 ### الخطوة التالية الآمنة
 - عند تنفيذ مرحلة CI القادمة، يكون هدفها اختبار تدفق `VALUE_ONLY` على بوت Echo أو بوت اختبار مملوك للمستخدم، مع قيمة اصطناعية، بعد تصميم مصادقة CI وحفظ الجلسة المشفرة. ولا يبدأ إعداد الحساب قبل وجود Workflow واضح ومراجعته.
+
+
+## 2026-11-27 — تجهيز CI لتسجيل جلسة Android WebView بصورة مشفرة واختبار الرسالة المباشرة
+
+### التغييرات المنفذة
+- إضافة تدفق جديد في PrivateSourceFlow باسم DIRECT_MESSAGE، ظاهر للمستخدم باسم «رسالة مباشرة (بدون أوامر)». يرسل القيمة المدخلة مباشرة دون أمر أو مطالبة، مع الإبقاء على COMMAND_AND_PROMPT وCOMMAND_THEN_VALUE وVALUE_ONLY كما هي.
+- تحديث محرك Telegram ليتطلب أمراً فقط في التدفقين command-based؛ تدفق DIRECT_MESSAGE لا يرسل /start أو أي أمر تلقائياً. النمط القديم VALUE_ONLY مستمر لأجل التوافق مع الإعدادات المحفوظة.
+- جعل إعداد مختبر التطبيق يستخدم DIRECT_MESSAGE افتراضياً، وإضافة اختبار وحدة يثبت إرسال القيمة وحدها.
+- إضافة نقطة تشغيل داخلية للمحاكي عبر intent extra باسم telegram_ci_open_session لفتح نفس Telegram WebView الموجودة في التطبيق دون التنقل اليدوي بين الصفحات.
+- إضافة Android instrumentation test باسم TelegramCiLiveAndroidTest. الاختبار يشغّل التطبيق الحقيقي على المحاكي، يستخدم TelegramSessionController وTelegramWeb نفسيهما، ويتحقق من مصادقة الجلسة وهوية البوت، ويرسل marker اصطناعياً إلى بوت Echo يملكه المستخدم ثم ينتظر الرد الجديد.
+- إضافة سكربت echo_bot.py محدود: لا يرد إلا على رسائل خاصة تبدأ بـ OSINT_CI_PING_، ويرجع marker OSINT_CI_ECHO_OK:. لا تُستخدم أرقام أو أسماء أشخاص حقيقيين في الاختبار.
+- إضافة session_crypto.py لتشفير صورة userdata الخاصة بمحاكي Android باستخدام AES-256-GCM، مع حفظ مفتاح التشفير حصراً في GitHub Actions Secret.
+- إضافة remote_console.py لتوفير صفحة تحكم noVNC محمية من خلال Cloudflare Quick Tunnel المقيد بعنوان البريد وإرسال PIN لمرة واحدة، وفيها زر واضح لحفظ الجلسة وإنهاء التهيئة.
+- إضافة Workflow مستقل .github/workflows/telegram-session-lab.yml بثلاثة أوضاع: bootstrap لأول تسجيل دخول، test لاختبار E2E، وrefresh للوصول اليومي إلى cache المشفر.
+- إضافة docs/TELEGRAM_SESSION_CI_LAB.md وفيه خطوات تجهيز Actions Secrets وتشغيل bootstrap وإنشاء بوت الاختبار وتشغيل الاختبار الحي.
+- تحديث رقم إصدار المعاينة إلى 0.12.3 / versionCode 21.
+
+### آلية الاستمرارية
+- لا يُستخدم Playwright storageState بديلاً عن جلسة WebView؛ المختبر يحفظ صورة userdata الكاملة للمحاكي كي تشمل Android Keystore وملف WebView الفعلي.
+- الملفات الخام لا ترفع إلى المستودع أو artifacts. فقط ملف ciphertext المشفر AES-GCM يُحفظ في GitHub Actions cache.
+- مفتاح التشفير الجديد: Actions secret باسم TELEGRAM_CI_SESSION_KEY (64 خانة hexadecimal/32 bytes)، ينشئه المستخدم بالأمر openssl rand -hex 32 ويضيفه مرة واحدة.
+- مفاتيح توقيع APK القائمة PREVIEW_KEYSTORE_BASE64 وPREVIEW_KEYSTORE_PASSWORD تبقى كما هي وتُستخدم للحفاظ على توقيع التطبيق نفسه بين التشغيلات.
+- جلسة الاختبار ليست مضمونة للأبد: Telegram قد يلغيها، وActions cache قد يُزال بفعل السياسة/الحصة؛ لذلك يوجد وصول مجدول يومي للـ cache، مع إعادة bootstrap عند انتهاء الجلسة أو فقدان التخزين.
+
+### المتطلبات التي يجب أن يوفرها المستخدم قبل أول تشغيل
+1. إضافة TELEGRAM_CI_SESSION_KEY في Settings → Secrets and variables → Actions.
+2. تشغيل Telegram Session CI Lab بوضع bootstrap وإدخال بريده لاستلام Cloudflare one-time PIN.
+3. تسجيل الدخول إلى Telegram بحساب اختبار مستقل داخل محاكي Android الظاهر في صفحة noVNC، ثم الضغط على زر حفظ الجلسة.
+4. إنشاء بوت Echo خاص به عبر BotFather وإضافة token باسم TELEGRAM_CI_ECHO_BOT_TOKEN كـ Actions secret. اسم البوت العام يُمرر في مدخل echo_bot_username عند test.
+5. تشغيل Workflow بوضع test.
+
+### حدود اختبار البوت الذي ذكره المستخدم
+- تمت إضافة نمط الرسالة المباشرة العام في التطبيق، وهو يناسب طريقة عمل البوتات التي تستقبل نصاً واحداً مباشرة.
+- لم يُربط CI ببوت @tellwhoobot أو يُرسل إليه أسماء/أرقام بحثاً عن معلومات تعريفية لأشخاص؛ اختبار التكامل يستخدم بوت Echo مملوكاً للمستخدم وقيمة اصطناعية فقط.
+
+### ما لم يُثبت بعد
+- لم يُشغّل Workflow Telegram Session CI Lab على GitHub حتى الآن، ولم تُنشأ جلسة اختبار فعلية أو تُستعد من cache بعد.
+- نجاح بناء Android CI منفرداً لا يثبت نجاح أول تسجيل دخول أو عمل Cloudflare/noVNC أو استعادة صورة userdata. يلزم التحقق من أول bootstrap ثم test.
+- قد تتطلب تفاصيل المحاكي أو Cloudflare Quick Tunnel أو استعادة صورة userdata تصحيحاً بعد أول تشغيل حي؛ لا تُعتبر النسخة صالحة نهائياً حتى ينجح اختبار test ويُلتقط رد Echo الفعلي.
