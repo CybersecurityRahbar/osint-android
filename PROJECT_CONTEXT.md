@@ -2725,3 +2725,10 @@
 ### حالة التحقق
 - الإصلاح الجديد لا يمكن أن يغيّر process الموجودة داخل التشغيل #8 لأنها بدأت من commit أقدم. لم يحدث تسجيل دخول أو حفظ جلسة في ذلك التشغيل.
 - لم يتم بعد اختبار bootstrap جديد بالكود الجديد؛ لذلك لا أدعي أن شاشة Android أصبحت ظاهرة حتى ينجح workflow الجديد في فحوص noVNC المباشرة وعبر reverse proxy، ثم تظهر شاشة المحاكي الفعلية.
+
+
+### نتيجة فحص التعديل الجديد — Android CI #214
+- تشغيل Android CI رقم `214`، Run ID: `46070705884`، على commit `d94c0d712d0b3cffe6d0d0db9f9724b898e9d91a` انتهى بالحالة `success`.
+- نجحت خطوة `Validate Telegram CI helper scripts`، وهي تنفذ `python3 -m py_compile` على `remote_console.py` و`session_crypto.py`؛ كما نجحت اختبارات JVM وAndroid Runtime Tests وتجهيز التوقيع وبناء APK ورفع artifact.
+- هذا يؤكد صحة syntax للـ proxy المعدّل وعدم كسر مسار بناء التطبيق، لكنه لا ينفذ فحوص HTTP الخاصة بملفات noVNC المضافة داخل خطوة `Open protected remote login console`. إثبات عرض الواجهة يحتاج Telegram bootstrap جديداً على commit `d94c0d7...`.
+- رابط Android CI #214: https://github.com/CybersecurityRahbar/osint-android/actions/runs/46070705884

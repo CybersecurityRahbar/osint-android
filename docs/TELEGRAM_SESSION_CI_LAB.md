@@ -132,3 +132,9 @@ Before exposing the Cloudflare URL, the workflow now verifies:
 - Those noVNC resources also return HTTP 200 through the protected-console reverse proxy.
 
 These checks are intended to make static-resource path errors fail inside Actions with the exact URL path, rather than present an unusable black page to the user. The current bootstrap run that exposed the screenshot uses the previous code and cannot be repaired in place; its page should not be used to log in or save a session. The next bootstrap must use the updated `main` commit and pass the new preflight checks before its link is shared.
+
+
+## Android CI #214 validation of the noVNC proxy update (2026-11-28)
+
+Android CI #214 completed successfully on commit `d94c0d712d0b3cffe6d0d0db9f9724b898e9d91a`. In particular, `Validate Telegram CI helper scripts` passed, confirming that the modified `remote_console.py` parses/compiles, and the general Android tests, signing and APK build all passed. This does not execute the new noVNC HTTP asset probes because those belong to the Telegram bootstrap workflow's protected-console step. The definitive test remains a new Telegram bootstrap on this commit.
+- Run: https://github.com/CybersecurityRahbar/osint-android/actions/runs/46070705884
