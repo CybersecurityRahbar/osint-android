@@ -1,31 +1,56 @@
 #!/usr/bin/env python3
-"""Streaming AES-256-GCM encryption for the dedicated Telegram CI emulator disk."""
+"""Streaming AES-256-GCM encryption for the dedicated Telegram CI emulator disk.
+
+No additional key is requested from the user. The AES key is derived inside CI from
+the existing stable APK signing-keystore secret using HKDF and a per-archive salt.
+"""
 from __future__ import annotations
 
 import argparse
+import base64
 import os
-import re
 import tarfile
 import tempfile
 from pathlib import Path
 
+from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 
-MAGIC = b"TGCI1"
-HEADER_SIZE = len(MAGIC) + 12
+MAGIC = b"TGCI2"
+SALT_SIZE = 16
+NONCE_SIZE = 12
+HEADER_SIZE = len(MAGIC) + SALT_SIZE + NONCE_SIZE
 TAG_SIZE = 16
 CHUNK_SIZE = 1024 * 1024
 ALLOWED_IMAGES = ("userdata-qemu.img", "encryptionkey.img", "sdcard.img")
-AAD = b"osint-android/telegram-ci-session/v1"
+AAD = b"osint-android/telegram-ci-session/v2"
+HKDF_INFO = b"osint-android/telegram-ci-session-key/v2"
 
 
-def load_key() -> bytes:
-    value = os.environ.get("TELEGRAM_CI_SESSION_KEY", "").strip()
-    if not re.fullmatch(r"[0-9a-fA-F]{64}", value):
+def derive_key(salt: bytes) -> bytes:
+    encoded_keystore = os.environ.get("PREVIEW_KEYSTORE_BASE64", "").strip()
+    keystore_password = os.environ.get("PREVIEW_KEYSTORE_PASSWORD", "")
+    if not encoded_keystore or not keystore_password:
         raise SystemExit(
-            "TELEGRAM_CI_SESSION_KEY must be exactly 64 hexadecimal characters (32 bytes)."
+            "Stable preview signing secrets are required to derive the Telegram CI encryption key."
         )
-    return bytes.fromhex(value)
+    try:
+        keystore_bytes = base64.b64decode(encoded_keystore, validate=True)
+    except Exception:
+        raise SystemExit("PREVIEW_KEYSTORE_BASE64 is not valid base64.")
+    if len(keystore_bytes) < 32:
+        raise SystemExit("The stable preview keystore data is unexpectedly short.")
+
+    # Domain-separated key derivation. The existing signing secret is never printed,
+    # written to disk by this helper, or copied into the repository.
+    input_key_material = keystore_bytes + b"\x00" + keystore_password.encode("utf-8")
+    return HKDF(
+        algorithm=hashes.SHA256(),
+        length=32,
+        salt=salt,
+        info=HKDF_INFO,
+    ).derive(input_key_material)
 
 
 def create_archive(avd_dir: Path, archive_path: Path) -> list[str]:
@@ -45,22 +70,23 @@ def create_archive(avd_dir: Path, archive_path: Path) -> list[str]:
 
 def encrypt(avd_dir: Path, output: Path) -> None:
     output.parent.mkdir(parents=True, exist_ok=True)
-    os.chmod(output.parent, 0o700) if output.parent.exists() else None
+    os.chmod(output.parent, 0o700)
 
     with tempfile.TemporaryDirectory(prefix="telegram-ci-") as temporary:
         archive_path = Path(temporary) / "emulator-state.tar.gz"
         found = create_archive(avd_dir, archive_path)
 
-        nonce = os.urandom(12)
+        salt = os.urandom(SALT_SIZE)
+        nonce = os.urandom(NONCE_SIZE)
         encryptor = Cipher(
-            algorithms.AES(load_key()),
+            algorithms.AES(derive_key(salt)),
             modes.GCM(nonce),
         ).encryptor()
         encryptor.authenticate_additional_data(AAD)
 
         temporary_output = output.with_suffix(output.suffix + ".tmp")
         with archive_path.open("rb") as source, temporary_output.open("wb") as target:
-            target.write(MAGIC + nonce)
+            target.write(MAGIC + salt + nonce)
             while True:
                 chunk = source.read(CHUNK_SIZE)
                 if not chunk:
@@ -88,14 +114,17 @@ def decrypt(source: Path, avd_dir: Path) -> None:
         prefix = encrypted_file.read(HEADER_SIZE)
         if len(prefix) != HEADER_SIZE or not prefix.startswith(MAGIC):
             raise SystemExit("Cached Telegram CI state has an invalid format.")
-        nonce = prefix[len(MAGIC):]
+
+        salt_start = len(MAGIC)
+        salt = prefix[salt_start:salt_start + SALT_SIZE]
+        nonce = prefix[salt_start + SALT_SIZE:]
         payload_size = file_size - HEADER_SIZE - TAG_SIZE
         encrypted_file.seek(file_size - TAG_SIZE)
         tag = encrypted_file.read(TAG_SIZE)
         encrypted_file.seek(HEADER_SIZE)
 
         decryptor = Cipher(
-            algorithms.AES(load_key()),
+            algorithms.AES(derive_key(salt)),
             modes.GCM(nonce, tag),
         ).decryptor()
         decryptor.authenticate_additional_data(AAD)
@@ -118,7 +147,7 @@ def decrypt(source: Path, avd_dir: Path) -> None:
                         archive_file.write(final)
             except Exception:
                 raise SystemExit(
-                    "Unable to authenticate/decrypt Telegram CI state. Check the Actions secret."
+                    "Unable to authenticate/decrypt Telegram CI state. Check the unchanged stable signing secrets."
                 )
 
             restored: list[str] = []
