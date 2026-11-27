@@ -2534,3 +2534,25 @@
 - أزيل `ACCESS_EMAIL` من متغيرات البيئة العامة للوظيفة؛ كانت GitHub Actions تعرضه في رؤوس السجلات لكل خطوة.
 - أصبح التحقق يقرأ البريد مباشرة من ملف حدث `workflow_dispatch` داخل runner، ويسجل أمر `::add-mask::` قبل نقله إلى `GITHUB_ENV`. بهذه الطريقة تُخفى قيمته في رؤوس الخطوات اللاحقة ولا يُطبع نصه بواسطة السكربت.
 - سجل التشغيل رقم 2 السابق سبق أن عرض البريد ضمن السجل؛ هذا التصحيح يخص التشغيلات الجديدة فقط. يمكن للمستخدم إلغاء التشغيل القديم وحذف سجلّه من واجهة Actions إذا أراد إزالة ذلك السجل من صفحة المستودع العام.
+
+
+## 2026-11-27 — تصحيح فشل إقلاع Android Emulator في التشغيل رقم 3
+
+### تحليل سجل GitHub Actions الفعلي
+- التشغيل: `Telegram Session CI Lab #3`، Run ID: `46059707283`، commit: `a45f708b123ccea00ebe720e2a7047d37141075e`.
+- الحالة النهائية: `failure`. نجح إعداد JDK وGradle وAndroid SDK، ونجحت خطوة round-trip للتشفير، وإنشاء AVD، والتحقق من ملف التوقيع، كما نجح بناء APK برسالة `BUILD SUCCESSFUL`.
+- فشل فقط تشغيل المحاكي داخل خطوة `Boot emulator with remote display`. السجل الحاسم:
+  - `Android Emulator did not register with ADB within 180 seconds.`
+  - `emulator: command not found`
+- السبب الجذري ليس بطء Android أو مشكلة في التطبيق أو Telegram: تم تثبيت حزمة emulator بواسطة sdkmanager، لكن مسار `$ANDROID_HOME/emulator` لم يكن ضمن `PATH` عند تشغيل الأمر `emulator`. ولذلك لم تبدأ عملية المحاكي أصلاً، وبقي ADB بلا أي جهاز متصل حتى انتهت المهلة.
+- لم تُفتح شاشة VNC، ولم يُنشأ رابط Cloudflare، ولم يحدث تسجيل دخول أو حفظ جلسة Telegram. لا يوجد cache جلسة مصادق عليها حتى الآن.
+
+### الإصلاح المرفوع إلى main
+- بعد تثبيت Android SDK، يتحقق Workflow من وجود الملف التنفيذي `$ANDROID_HOME/emulator/emulator`؛ وإذا كان مفقوداً يفشل مبكراً برسالة واضحة مع طباعة مسارات ملفات emulator المكتشفة.
+- يضيف `$ANDROID_HOME/emulator` و`$ANDROID_HOME/platform-tools` إلى `GITHUB_PATH`.
+- يستدعي المحاكي بالمسار المطلق في وضعي `bootstrap` و`test`، لا بالاسم المختصر `emulator`.
+- تحديث دليل `docs/TELEGRAM_SESSION_CI_LAB.md` بهذا التصحيح.
+
+### الحالة التالية
+- يجب تشغيل Workflow من جديد بوضع `bootstrap` على `main` بعد هذا الإصلاح.
+- نجاح هذا التصحيح لم يُثبت بعد على تشغيل جديد؛ لا يبدأ تسجيل الدخول إلا بعد أن تصبح خطوة إقلاع المحاكي ناجحة وتظهر خطوة `Open protected remote login console` مع رابط `PROTECTED ANDROID CONSOLE URL`.
