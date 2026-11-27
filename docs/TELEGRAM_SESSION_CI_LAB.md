@@ -112,3 +112,9 @@ References:
 - GitHub-hosted runners reference: https://docs.github.com/en/actions/reference/runners/github-hosted-runners
 
 This permission change is scoped to the temporary GitHub-hosted runner used by this workflow; it does not alter permissions on the user's phone or computer.
+
+
+## KVM fix cross-check — Android CI #213 (2026-11-27)
+
+After the Telegram Lab #7 diagnosis, Android CI #213 ran on the commit containing the Telegram workflow change and completed successfully. Its existing `Enable KVM for Android emulator` step passed, followed by successful Android runtime parser instrumentation, stable signing, APK build, and artifact upload. This is useful evidence that the GitHub-hosted runner's documented KVM udev setup is available in this repository's Android CI. It does not replace the required Telegram bootstrap check: the separate Telegram workflow must still pass its newly added KVM read/write/open preflight and then boot its GUI emulator.
+- Run: https://github.com/CybersecurityRahbar/osint-android/actions/runs/46067211019

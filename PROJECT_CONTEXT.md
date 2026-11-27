@@ -2690,3 +2690,10 @@
 - هذا الإصلاح أُضيف إلى Workflow وجرى توثيقه، لكن لم يُختبر بعد في تشغيل Telegram Session Lab جديد؛ لذلك لا ندعي أن شاشة المحاكي أو VNC أصبحت تعمل حتى يظهر تشغيل bootstrap يجتاز خطوة KVM ثم ينجح `Boot emulator with remote display`.
 - Android CI #212 السابق لا يثبت صلاحيات KVM في Telegram Lab؛ الاختبار الحاسم هو bootstrap بعد هذا الالتزام.
 - لم يتم تسجيل الدخول إلى Telegram أو حفظ جلسة أو فتح محادثة بوت أو إرسال `/start` في التشغيل #7؛ فشل التشغيل قبل ظهور واجهة المحاكي.
+
+
+### تحقق إضافي بعد إصلاح KVM — Android CI #213
+- بعد دفع إصلاح KVM إلى `main`، شُغّل Android CI رقم `213`، Run ID: `46067211019`، على commit `a433f0d9b0a12a1149397f9735b86cecb134bdbb`.
+- انتهى التشغيل بالحالة `success`. نجحت خطوة `Enable KVM for Android emulator`، ونجحت اختبارات Android runtime instrumentation، وتجهيز التوقيع، وبناء APK ورفع artifact.
+- هذه نتيجة تحقق مساندة: إعداد KVM الموثق يعمل في بيئة GitHub Actions الخاصة بالمستودع، ولا توجد مشكلة عامة في المحاكي أو build. لكنها لا تختبر خطوة KVM الجديدة داخل Telegram Session CI Lab ولا تثبت بعد أن شاشة GUI/VNC ستقلع في bootstrap؛ يلزم تشغيل Telegram workflow على commit `a433f0d...` لتأكيد ذلك.
+- رابط Android CI #213: https://github.com/CybersecurityRahbar/osint-android/actions/runs/46067211019
