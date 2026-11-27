@@ -118,6 +118,15 @@ jobs:
           set -euo pipefail
           sdkmanager "platforms;android-36" "build-tools;36.0.0" "platform-tools" "emulator" "system-images;android-35;google_apis;x86_64"
           yes | sdkmanager --licenses >/dev/null || true
+          if [[ ! -x "$ANDROID_HOME/emulator/emulator" ]]; then
+            echo "::error::Android SDK package 'emulator' was requested, but $ANDROID_HOME/emulator/emulator is missing."
+            find "$ANDROID_HOME" -maxdepth 4 -type f -name emulator -print || true
+            exit 1
+          fi
+          # The setup-android action does not always add the emulator package
+          # directory to PATH. Make it explicit for all subsequent steps.
+          echo "$ANDROID_HOME/emulator" >> "$GITHUB_PATH"
+          echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
           sudo apt-get update
           sudo apt-get install -y xvfb x11vnc openbox novnc websockify python3-pip
           python3 -m pip install --user --break-system-packages "aiohttp==3.11.18" "cryptography==45.0.5"
@@ -189,7 +198,7 @@ jobs:
           openbox >/tmp/openbox.log 2>&1 &
           x11vnc -display :99 -forever -shared -nopw -listen 127.0.0.1 -rfbport 5900 >/tmp/x11vnc.log 2>&1 &
           websockify --web=/usr/share/novnc 6081 127.0.0.1:5900 >/tmp/novnc.log 2>&1 &
-          emulator -avd TelegramCI -gpu swiftshader_indirect -no-snapshot -no-audio -no-boot-anim -camera-back none -memory 4096 >/tmp/emulator.log 2>&1 &
+          "$ANDROID_HOME/emulator/emulator" -avd TelegramCI -gpu swiftshader_indirect -no-snapshot -no-audio -no-boot-anim -camera-back none -memory 4096 >/tmp/emulator.log 2>&1 &
           echo $! > /tmp/emulator.pid
           if ! timeout 180s adb wait-for-device; then
             echo "::error::Android Emulator did not register with ADB within 180 seconds."
@@ -279,7 +288,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          emulator -avd TelegramCI -no-window -gpu swiftshader_indirect -no-snapshot -no-audio -no-boot-anim -camera-back none -memory 4096 >/tmp/emulator.log 2>&1 &
+          "$ANDROID_HOME/emulator/emulator" -avd TelegramCI -no-window -gpu swiftshader_indirect -no-snapshot -no-audio -no-boot-anim -camera-back none -memory 4096 >/tmp/emulator.log 2>&1 &
           echo $! > /tmp/emulator.pid
           adb wait-for-device
           for i in $(seq 1 180); do
