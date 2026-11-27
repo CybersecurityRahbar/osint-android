@@ -43,7 +43,6 @@ jobs:
       PREVIEW_KEY_ALIAS: osint-preview
       TELEGRAM_CI_BOT_USERNAME: ${{ inputs.telegram_bot_username }}
       LAB_MODE: ${{ inputs.mode || 'refresh' }}
-      ACCESS_EMAIL: ${{ inputs.access_email }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -64,9 +63,14 @@ jobs:
           MODE="$LAB_MODE"
           if [[ "$GITHUB_EVENT_NAME" == "schedule" ]]; then MODE="refresh"; fi
           echo "Resolved mode: $MODE"
-          if [[ "$MODE" == "bootstrap" && -z "$ACCESS_EMAIL" ]]; then
-            echo "::error::Enter access_email when starting bootstrap."
-            exit 1
+          if [[ "$MODE" == "bootstrap" ]]; then
+            ACCESS_EMAIL="$(python3 -c 'import json, os; print(json.load(open(os.environ["GITHUB_EVENT_PATH"])).get("inputs", {}).get("access_email", ""))')"
+            if [[ -z "$ACCESS_EMAIL" ]]; then
+              echo "::error::Enter access_email when starting bootstrap."
+              exit 1
+            fi
+            echo "::add-mask::$ACCESS_EMAIL"
+            echo "ACCESS_EMAIL=$ACCESS_EMAIL" >> "$GITHUB_ENV"
           fi
           if [[ "$MODE" == "test" ]]; then
             if [[ ! -f .telegram-ci/session-state.enc ]]; then
