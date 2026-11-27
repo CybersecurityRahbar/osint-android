@@ -20,7 +20,7 @@ Keep the signing secrets unchanged. If the preview signing keystore or its passw
 1. Open Actions → Telegram Session CI Lab → Run workflow.
 2. Select mode bootstrap.
 3. Enter an email address that can receive a one-time PIN in access_email.
-4. Wait for the step “Open protected remote login console”, then copy the `PROTECTED ANDROID CONSOLE URL` printed directly in that step's live logs. Do not wait for the overall workflow summary: GitHub only publishes job summaries after the job finishes, while this bootstrap step intentionally remains active until you save the session. Open the URL in a browser and enter the PIN sent to the allowed email.
+4. Wait for the step “Open protected remote login console”, then copy the `PROTECTED ANDROID CONSOLE URL` printed directly in that step's live logs. Do not wait for the overall workflow summary: GitHub only publishes job summaries after the job finishes, while this bootstrap step intentionally remains active until you save the session. Open the URL in a browser and enter the PIN sent to the allowed email. The workflow masks the access email in subsequent step logs.
 5. The page displays the Android Emulator running the preview app, with the Telegram Web session window opened.
 6. Log in using a dedicated Telegram test account. Approve the QR session from the Telegram app or use another official login method offered by Telegram.
 7. Wait until Telegram chats are visibly loaded, then press “حفظ الجلسة وإنهاء” on the remote console page.
